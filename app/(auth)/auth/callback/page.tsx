@@ -1,25 +1,27 @@
 'use client';
 
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/useToast';
 
-export default function AuthCallbackPage() {
+/** Komponen dalam Suspense: tempat kita akses search params */
+function CallbackInner() {
   const router = useRouter();
-  const search = useSearchParams();
+  const searchParams = useSearchParams();
   const supabase = createClient();
   const { showToast } = useToast();
 
   useEffect(() => {
     (async () => {
-      const code = search.get('code');
+      // Pakai optional chaining supaya aman bagi TS
+      const code = searchParams?.get('code') ?? '';
       if (!code) {
         router.replace('/login');
         return;
       }
 
-      // Karena detectSessionInUrl:false, kita tukar manual
+      // Tukar code -> session (PKCE)
       const { error } = await supabase.auth.exchangeCodeForSession(code);
       if (error) {
         showToast({
@@ -33,7 +35,17 @@ export default function AuthCallbackPage() {
 
       router.replace('/dashboard');
     })();
-  }, [search, router, supabase, showToast]);
+    // searchParams adalah object stable; dependensinya aman
+  }, [searchParams, router, supabase, showToast]);
 
   return <div className="p-6 text-sm">Menyelesaikan login…</div>;
+}
+
+/** Page dibungkus Suspense (sesuai saran Next) */
+export default function AuthCallbackPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm">Memuat…</div>}>
+      <CallbackInner />
+    </Suspense>
+  );
 }
