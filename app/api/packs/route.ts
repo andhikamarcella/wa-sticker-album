@@ -1,107 +1,113 @@
-import { NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import type { SupabaseClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
-import type { Database } from '@/types/database';
-import { packCreateSchema } from '@/lib/zod-schemas';
-import { buildPackZip } from '@/lib/zip';
-import { supabaseAdmin } from '@/lib/db';
+// app/api/packs/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { slugify } from '@/lib/slug';
 
-const PACK_BUCKET = 'packs';
+type AlbumRow = { id: string; owner_id: string };
+type PackRow = { id: string; exported_zip_url?: string | null };
 
-async function ensureAccess(
-  albumId: string,
-  userId: string,
-  supabase: SupabaseClient<Database>
-) {
-  const { data: album } = await supabase
+async function canWriteAlbum(userId: string, albumId: string) {
+  const supabase = getSupabaseServerClient();
+
+  // ambil owner album dengan aman
+  const albumRes = await supabase
     .from('albums')
     .select('id, owner_id')
     .eq('id', albumId)
-    .single();
+    .maybeSingle();
+
+  if (albumRes.error) return false;
+  const album = albumRes.data as AlbumRow | null;
   if (!album) return false;
   if (album.owner_id === userId) return true;
-  const { data: collaborator } = await supabase
+
+  // cek collaborator
+  const collabRes = await supabase
     .from('album_collaborators')
     .select('id')
     .eq('album_id', albumId)
     .eq('user_id', userId)
     .maybeSingle();
-  return Boolean(collaborator);
+
+  if (collabRes.error) return false;
+  return !!collabRes.data;
 }
 
-export async function POST(request: Request) {
-  const supabase = createRouteHandlerClient<Database>({ cookies });
-  const body = await request.json();
-  const parsed = packCreateSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  }
+export async function POST(req: NextRequest) {
+  const supabase = getSupabaseServerClient();
 
+  // auth user
   const {
-    data: { user }
+    data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const allowed = await ensureAccess(parsed.data.albumId, user.id, supabase);
+
+  // body
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const { albumId, name, author, stickerIds } = (body as any) ?? {};
+  if (!albumId || !name) {
+    return NextResponse.json({ error: 'albumId dan name wajib diisi' }, { status: 400 });
+  }
+
+  // izin
+  const allowed = await canWriteAlbum(user.id, String(albumId));
   if (!allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const { data: stickers, error: stickerError } = await supabase
-    .from('stickers')
-    .select('id,title,file_url')
-    .in('id', parsed.data.stickerIds);
-  if (stickerError) {
-    return NextResponse.json({ error: stickerError.message }, { status: 500 });
-  }
+  // buat slug unik sederhana: slug-nama + 6 char acak
+  const baseSlug = slugify(String(name));
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const slug = `${baseSlug}-${suffix}`;
 
-  const { data: pack, error: packError } = await supabase
+  // insert pack
+  const packRes = await supabase
     .from('packs')
     .insert({
-      album_id: parsed.data.albumId,
-      name: parsed.data.name,
-      author: parsed.data.author ?? null
+      album_id: String(albumId),
+      name: String(name),
+      author: author ? String(author) : null,
+      slug,
+      is_public: false,
     })
-    .select()
-    .single();
-  if (packError || !pack) {
-    return NextResponse.json({ error: packError?.message ?? 'Gagal membuat pack' }, { status: 500 });
+    .select('id, exported_zip_url')
+    .maybeSingle();
+
+  if (packRes.error) {
+    return NextResponse.json({ error: packRes.error.message }, { status: 400 });
   }
 
-  await supabase
-    .from('pack_items')
-    .insert(
-      parsed.data.stickerIds.map((id, index) => ({
-        pack_id: pack.id,
-        sticker_id: id,
-        order_index: index
-      }))
-    );
+  const pack = packRes.data as PackRow | null;
+  if (!pack) {
+    return NextResponse.json({ error: 'Failed to create pack' }, { status: 500 });
+  }
 
-  const zipBuffer = await buildPackZip({
-    stickers: (stickers ?? []).sort(
-      (a, b) => parsed.data.stickerIds.indexOf(a.id) - parsed.data.stickerIds.indexOf(b.id)
-    ),
-    packName: parsed.data.name,
-    author: parsed.data.author
+  // (opsional) simpan relasi stickerIds -> pack_items jika tabel ada
+  if (Array.isArray(stickerIds) && stickerIds.length > 0) {
+    await supabase
+      .from('pack_items')
+      .insert(
+        (stickerIds as string[]).map((sid, i) => ({
+          pack_id: pack.id,
+          sticker_id: sid,
+          order_index: i,
+        }))
+      )
+      .select()
+      .maybeSingle()
+      .catch(() => {
+        // biarkan silent; jangan gagalkan request kalau tabel ini belum ada
+      });
+  }
+
+  // TODO: proses generate ZIP di background dan update kolom exported_zip_url
+  // Untuk sekarang, kembalikan nilai yang ada (mungkin null)
+  return NextResponse.json({
+    id: pack.id,
+    exported_zip_url: pack.exported_zip_url ?? null,
   });
-
-  const filePath = `packs/${pack.id}_${Date.now()}.zip`;
-  const { error: uploadError } = await supabaseAdmin.storage
-    .from(PACK_BUCKET)
-    .upload(filePath, zipBuffer, { contentType: 'application/zip', upsert: true });
-  if (uploadError) {
-    return NextResponse.json({ error: uploadError.message }, { status: 500 });
-  }
-
-  const publicUrl = supabaseAdmin.storage.from(PACK_BUCKET).getPublicUrl(filePath).data.publicUrl;
-  const { data: updatedPack, error: updateError } = await supabase
-    .from('packs')
-    .update({ exported_zip_url: publicUrl })
-    .eq('id', pack.id)
-    .select()
-    .single();
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
-  }
-
-  return NextResponse.json(updatedPack, { status: 201 });
 }
