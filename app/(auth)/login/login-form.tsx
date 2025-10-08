@@ -12,15 +12,13 @@ export default function LoginForm() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Pakai domain yang konsisten (production atau preview) via ENV
-  // Pastikan kamu set di Vercel: NEXT_PUBLIC_SITE_URL=https://<domain-kamu>
+  // Selalu pakai domain yang konsisten
   const redirectOrigin =
     process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!email) return;
-
     setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithOtp({
