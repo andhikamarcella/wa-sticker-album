@@ -9,7 +9,6 @@ type PackRow = { id: string; exported_zip_url?: string | null };
 async function canWriteAlbum(userId: string, albumId: string) {
   const supabase = getSupabaseServerClient();
 
-  // ambil owner album dengan aman
   const albumRes = await supabase
     .from('albums')
     .select('id, owner_id')
@@ -21,7 +20,6 @@ async function canWriteAlbum(userId: string, albumId: string) {
   if (!album) return false;
   if (album.owner_id === userId) return true;
 
-  // cek collaborator
   const collabRes = await supabase
     .from('album_collaborators')
     .select('id')
@@ -36,7 +34,7 @@ async function canWriteAlbum(userId: string, albumId: string) {
 export async function POST(req: NextRequest) {
   const supabase = getSupabaseServerClient();
 
-  // auth user
+  // auth
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -59,7 +57,7 @@ export async function POST(req: NextRequest) {
   const allowed = await canWriteAlbum(user.id, String(albumId));
   if (!allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  // buat slug unik sederhana: slug-nama + 6 char acak
+  // slug unik
   const baseSlug = slugify(String(name));
   const suffix = Math.random().toString(36).slice(2, 8);
   const slug = `${baseSlug}-${suffix}`;
@@ -80,15 +78,14 @@ export async function POST(req: NextRequest) {
   if (packRes.error) {
     return NextResponse.json({ error: packRes.error.message }, { status: 400 });
   }
-
   const pack = packRes.data as PackRow | null;
   if (!pack) {
     return NextResponse.json({ error: 'Failed to create pack' }, { status: 500 });
   }
 
-  // (opsional) simpan relasi stickerIds -> pack_items jika tabel ada
+  // (opsional) simpan items
   if (Array.isArray(stickerIds) && stickerIds.length > 0) {
-    await supabase
+    const { error: itemsError } = await supabase
       .from('pack_items')
       .insert(
         (stickerIds as string[]).map((sid, i) => ({
@@ -96,16 +93,13 @@ export async function POST(req: NextRequest) {
           sticker_id: sid,
           order_index: i,
         }))
-      )
-      .select()
-      .maybeSingle()
-      .catch(() => {
-        // biarkan silent; jangan gagalkan request kalau tabel ini belum ada
-      });
+      );
+
+    if (itemsError) {
+      console.warn('[packs POST] skip inserting pack_items:', itemsError.message);
+    }
   }
 
-  // TODO: proses generate ZIP di background dan update kolom exported_zip_url
-  // Untuk sekarang, kembalikan nilai yang ada (mungkin null)
   return NextResponse.json({
     id: pack.id,
     exported_zip_url: pack.exported_zip_url ?? null,
