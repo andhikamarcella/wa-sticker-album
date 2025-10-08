@@ -9,7 +9,6 @@
     "lint": "next lint",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
-    "postinstall": "shadcn-ui init"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",
