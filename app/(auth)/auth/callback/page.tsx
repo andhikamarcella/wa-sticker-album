@@ -13,19 +13,37 @@ export default function AuthCallbackPage() {
 
   useEffect(() => {
     (async () => {
-      // amanin biar TS nggak protes
-      const code = sp?.get?.('code') ?? null;
+      const code = sp?.get?.('code') ?? '';
       if (!code) {
         router.replace('/login');
         return;
       }
 
-      // ⬇️ versi supabase-js kamu butuh argumen { code }
-      const { error } = await supabase.auth.exchangeCodeForSession({ code });
-      if (error) {
+      // Support berbagai versi supabase-js:
+      // - v2 older: exchangeCodeForSession(code: string)
+      // - v2 newer: exchangeCodeForSession(): Promise<{ error? }>
+      // Kita panggil dengan cast any agar lolos type-check di semua versi.
+      let resp: any;
+      try {
+        const authAny = (supabase.auth as any);
+        resp =
+          authAny.exchangeCodeForSession.length >= 1
+            ? await authAny.exchangeCodeForSession(code)      // versi lama
+            : await authAny.exchangeCodeForSession();         // versi baru
+      } catch (e: any) {
         showToast({
           title: 'Gagal login',
-          description: error.message,
+          description: e?.message ?? 'Terjadi kesalahan saat menyelesaikan login.',
+          variant: 'destructive',
+        });
+        router.replace('/login?error=magic-link');
+        return;
+      }
+
+      if (resp?.error) {
+        showToast({
+          title: 'Gagal login',
+          description: resp.error.message ?? 'Tidak bisa menukar kode menjadi sesi.',
           variant: 'destructive',
         });
         router.replace('/login?error=magic-link');
