@@ -36,7 +36,8 @@
     "tailwind-merge": "^2.3.0",
     "tailwindcss-animate": "^1.0.7",
     "zod": "^3.23.8",
-    "tailwind-merge": "^2.5.2"
+    "tailwind-merge": "^2.5.2",
+    "@supabase/ssr": "^0.5.0"
   },
   "devDependencies": {
     "eslint-config-prettier": "^9.1.0",
