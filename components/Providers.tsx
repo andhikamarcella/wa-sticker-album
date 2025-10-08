@@ -17,8 +17,6 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           {children}
           <Toaster />
         </ToastProvider>
-
-        {/* biarkan tanpa prop position untuk kompatibilitas versi */}
         <ReactQueryDevtools initialIsOpen={false} />
       </QueryClientProvider>
     </NextThemesProvider>
