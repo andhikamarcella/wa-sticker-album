@@ -2,7 +2,8 @@ import LoginForm from './login-form';
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary/10 via-background to-background px-6">
+    <div className="mx-auto max-w-sm p-6">
+      <h1 className="mb-4 text-2xl font-bold">Masuk</h1>
       <LoginForm />
     </div>
   );
