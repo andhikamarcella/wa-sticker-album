@@ -17,11 +17,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const showToast = useCallback((t: Omit<Toast, 'id'>) => {
-    const id = Math.random().toString(36).slice(2);
-    setToasts((prev) => [...prev, { id, ...t }]);
-    setTimeout(() => dismissToast(id), 3000);
-  }, [dismissToast]);
+  const showToast = useCallback(
+    (t: Omit<Toast, 'id'>) => {
+      const id = Math.random().toString(36).slice(2);
+      setToasts((prev) => [...prev, { id, ...t }]);
+      setTimeout(() => dismissToast(id), 3000);
+    },
+    [dismissToast]
+  );
 
   const value: ToastContextValue = { toasts, showToast, dismissToast };
   return <ToastContext.Provider value={value}>{children}</ToastContext.Provider>;
