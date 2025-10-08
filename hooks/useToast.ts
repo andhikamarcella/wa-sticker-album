@@ -1,18 +1,11 @@
 'use client';
+import React, { createContext, useCallback, useContext, useState } from 'react';
 
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
-
-type Toast = {
-  id: number;
-  title?: string;
-  description?: string;
-  variant?: 'default' | 'destructive' | 'success';
-};
-
+type Toast = { id: string; title?: string; description?: string };
 type ToastContextValue = {
   toasts: Toast[];
-  showToast: (toast: Omit<Toast, 'id'>) => void;
-  dismissToast: (id: number) => void;
+  showToast: (t: Omit<Toast, 'id'>) => void;
+  dismissToast: (id: string) => void;
 };
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -20,25 +13,22 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const showToast = useCallback((toast: Omit<Toast, 'id'>) => {
-    setToasts((prev) => [...prev, { ...toast, id: Date.now() }]);
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const dismissToast = useCallback((id: number) => {
-    setToasts((prev) => prev.filter((toast) => toast.id !== id));
-  }, []);
+  const showToast = useCallback((t: Omit<Toast, 'id'>) => {
+    const id = Math.random().toString(36).slice(2);
+    setToasts((prev) => [...prev, { id, ...t }]);
+    setTimeout(() => dismissToast(id), 3000);
+  }, [dismissToast]);
 
-  const value = useMemo(() => ({ toasts, showToast, dismissToast }), [
-    toasts,
-    showToast,
-    dismissToast
-  ]);
-
+  const value: ToastContextValue = { toasts, showToast, dismissToast };
   return <ToastContext.Provider value={value}>{children}</ToastContext.Provider>;
 }
 
 export function useToast() {
   const ctx = useContext(ToastContext);
-  if (!ctx) throw new Error('useToast must be used within ToastProvider');
+  if (!ctx) throw new Error('useToast must be used within <ToastProvider>');
   return ctx;
 }
