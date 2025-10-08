@@ -42,7 +42,9 @@ export default function LoginForm() {
         placeholder="email@kamu.com"
         required
       />
-      <Button type="submit" disabled={loading}>{loading ? 'Mengirim…' : 'Kirim Magic Link'}</Button>
+      <Button type="submit" disabled={loading}>
+        {loading ? 'Mengirim…' : 'Kirim Magic Link'}
+      </Button>
     </form>
   );
 }
