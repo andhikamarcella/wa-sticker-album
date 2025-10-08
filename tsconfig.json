@@ -16,8 +16,7 @@
     "incremental": true,
     "types": ["node"],
     "baseUrl": ".",
-    "paths": {
-      "@/*": ["./*"]
+    "paths": { "@/*": ["./*"] }
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", "**/*.cjs", "**/*.mjs"],
