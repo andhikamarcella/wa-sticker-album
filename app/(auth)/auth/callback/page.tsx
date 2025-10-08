@@ -7,21 +7,21 @@ import { useToast } from '@/hooks/useToast';
 
 export default function AuthCallbackPage() {
   const router = useRouter();
-  const sp = useSearchParams(); // bisa dipersepsikan null di tipe tertentu
+  const sp = useSearchParams();
   const { showToast } = useToast();
   const supabase = createClient();
 
   useEffect(() => {
     (async () => {
-      // guard aman untuk TS: kalau sp null, code jadi null
+      // amanin biar TS nggak protes
       const code = sp?.get?.('code') ?? null;
-
       if (!code) {
         router.replace('/login');
         return;
       }
 
-      const { error } = await supabase.auth.exchangeCodeForSession();
+      // ⬇️ versi supabase-js kamu butuh argumen { code }
+      const { error } = await supabase.auth.exchangeCodeForSession({ code });
       if (error) {
         showToast({
           title: 'Gagal login',
