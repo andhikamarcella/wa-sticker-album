@@ -14,40 +14,30 @@ export default function AuthCallback() {
   useEffect(() => {
     (async () => {
       const code = sp?.get?.('code') ?? '';
-      if (!code) {
-        router.replace('/login');
-        return;
-      }
+      if (!code) { router.replace('/login'); return; }
 
-      // Kompatibel lintas versi supabase-js
       try {
+        // Kompatibel lintas versi supabase-js
         const authAny = supabase.auth as any;
         const resp =
           typeof authAny.exchangeCodeForSession === 'function' &&
           authAny.exchangeCodeForSession.length >= 1
-            ? await authAny.exchangeCodeForSession(code) // versi lama: (code: string)
-            : await authAny.exchangeCodeForSession();    // versi baru: tanpa argumen
+            ? await authAny.exchangeCodeForSession(code)   // versi lama: (code: string)
+            : await authAny.exchangeCodeForSession();      // versi baru: tanpa argumen
 
         if (resp?.error) {
-          showToast({
-            title: 'Gagal login',
-            description: resp.error.message ?? 'Tidak bisa menukar kode menjadi sesi.',
-            variant: 'destructive',
-          });
+          showToast({ title: 'Gagal login', description: resp.error.message ?? 'Tidak bisa menukar kode.', variant: 'destructive' });
           router.replace('/login?error=magic-link');
           return;
         }
-      } catch (e: any) {
-        showToast({
-          title: 'Gagal login',
-          description: e?.message ?? 'Terjadi kesalahan saat menyelesaikan login.',
-          variant: 'destructive',
-        });
-        router.replace('/login?error=magic-link');
-        return;
-      }
 
-      router.replace('/dashboard');
+        // ✅ penting: refresh supaya RSC membaca cookie sesi baru
+        router.replace('/dashboard');
+        router.refresh();
+      } catch (e: any) {
+        showToast({ title: 'Gagal login', description: e?.message ?? 'Terjadi kesalahan.', variant: 'destructive' });
+        router.replace('/login?error=magic-link');
+      }
     })();
   }, [router, sp, supabase, showToast]);
 
