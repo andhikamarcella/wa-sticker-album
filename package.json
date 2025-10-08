@@ -39,6 +39,7 @@
     "tailwind-merge": "^2.5.2"
   },
   "devDependencies": {
+    "eslint-config-prettier": "^9.1.0",
     "@types/node": "^20.12.12",
     "@types/qrcode": "^1.5.5",
     "@types/react": "^18.3.3",
