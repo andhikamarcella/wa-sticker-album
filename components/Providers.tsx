@@ -5,7 +5,7 @@ import { ThemeProvider as NextThemesProvider } from 'next-themes';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { ToastProvider } from '@/hooks/useToast';
-import { Toaster } from '@/components/Toaster'; // biarkan sesuai proyekmu
+import { Toaster } from '@/components/Toaster';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = React.useState(() => new QueryClient());
@@ -18,7 +18,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           <Toaster />
         </ToastProvider>
 
-        {/* Hilangkan prop position biar kompatibel di semua versi */}
+        {/* biarkan tanpa prop position untuk kompatibilitas versi */}
         <ReactQueryDevtools initialIsOpen={false} />
       </QueryClientProvider>
     </NextThemesProvider>
