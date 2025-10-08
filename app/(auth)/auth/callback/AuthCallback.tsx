@@ -26,12 +26,16 @@ export default function AuthCallback() {
             : await authAny.exchangeCodeForSession();      // versi baru: tanpa argumen
 
         if (resp?.error) {
-          showToast({ title: 'Gagal login', description: resp.error.message ?? 'Tidak bisa menukar kode.', variant: 'destructive' });
+          showToast({
+            title: 'Gagal login',
+            description: resp.error.message ?? 'Tidak bisa menukar kode.',
+            variant: 'destructive',
+          });
           router.replace('/login?error=magic-link');
           return;
         }
 
-        // ✅ penting: refresh supaya RSC membaca cookie sesi baru
+        // Penting: refresh agar RSC membaca cookie sesi yang baru
         router.replace('/dashboard');
         router.refresh();
       } catch (e: any) {
