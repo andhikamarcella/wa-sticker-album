@@ -1,7 +1,15 @@
 'use client';
 import React, { createContext, useCallback, useContext, useState } from 'react';
 
-type Toast = { id: string; title?: string; description?: string };
+type ToastVariant = 'default' | 'success' | 'destructive';
+
+type Toast = {
+  id: string;
+  title?: string;
+  description?: string;
+  variant?: ToastVariant; // ✅ tambahkan variant
+};
+
 type ToastContextValue = {
   toasts: Toast[];
   showToast: (t: Omit<Toast, 'id'>) => void;
