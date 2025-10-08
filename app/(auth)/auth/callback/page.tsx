@@ -7,13 +7,15 @@ import { useToast } from '@/hooks/useToast';
 
 export default function AuthCallbackPage() {
   const router = useRouter();
-  const search = useSearchParams();
+  const sp = useSearchParams(); // bisa dipersepsikan null di tipe tertentu
   const { showToast } = useToast();
   const supabase = createClient();
 
   useEffect(() => {
     (async () => {
-      const code = search.get('code');
+      // guard aman untuk TS: kalau sp null, code jadi null
+      const code = sp?.get?.('code') ?? null;
+
       if (!code) {
         router.replace('/login');
         return;
@@ -32,7 +34,7 @@ export default function AuthCallbackPage() {
 
       router.replace('/dashboard');
     })();
-  }, [router, search, supabase, showToast]);
+  }, [router, sp, supabase, showToast]);
 
   return <div className="p-6 text-sm">Menyelesaikan login…</div>;
 }
