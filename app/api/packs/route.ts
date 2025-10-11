@@ -1,107 +1,252 @@
-// app/api/packs/route.ts
+import { Buffer } from 'node:buffer';
+import { randomUUID } from 'node:crypto';
+import JSZip from 'jszip';
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { z } from 'zod';
+
+import { getServerClient, type SupabaseServerClient } from '@/lib/supabaseServer';
 import { slugify } from '@/lib/slug';
 
-type AlbumRow = { id: string; owner_id: string };
-type PackRow = { id: string; exported_zip_url?: string | null };
+const createPackSchema = z.object({
+  albumId: z.string().uuid('Album id tidak valid'),
+  name: z.string().trim().min(1, 'Nama pack wajib diisi').max(120, 'Nama terlalu panjang'),
+  author: z
+    .string()
+    .trim()
+    .max(120, 'Nama pembuat terlalu panjang')
+    .optional(),
+  stickerIds: z
+    .array(z.string().uuid('Sticker id tidak valid'))
+    .nonempty('Minimal satu sticker diperlukan'),
+});
 
-async function canWriteAlbum(userId: string, albumId: string) {
-  const supabase = getSupabaseServerClient();
+type AlbumRow = {
+  id: string;
+  owner_id: string;
+};
 
-  const albumRes = await supabase
-    .from('albums')
+type StickerRow = {
+  id: string;
+  album_id: string;
+  file_url: string;
+  thumb_url: string | null;
+  title: string | null;
+};
+
+async function fetchAlbum(
+  supabase: SupabaseServerClient,
+  albumId: string,
+): Promise<AlbumRow | null> {
+  const { data, error } = await (supabase.from('albums') as any)
     .select('id, owner_id')
     .eq('id', albumId)
     .maybeSingle();
 
-  if (albumRes.error) return false;
-  const album = albumRes.data as AlbumRow | null;
-  if (!album) return false;
-  if (album.owner_id === userId) return true;
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return null;
+    }
+    throw error;
+  }
 
-  const collabRes = await supabase
-    .from('album_collaborators')
+  return (data as AlbumRow | null) ?? null;
+}
+
+async function canWriteAlbum(
+  supabase: SupabaseServerClient,
+  userId: string,
+  albumId: string,
+): Promise<boolean> {
+  const album = await fetchAlbum(supabase, albumId);
+  if (!album) {
+    return false;
+  }
+
+  if (album.owner_id === userId) {
+    return true;
+  }
+
+  const { data, error } = await (supabase.from('album_collaborators') as any)
     .select('id')
     .eq('album_id', albumId)
     .eq('user_id', userId)
     .maybeSingle();
 
-  if (collabRes.error) return false;
-  return !!collabRes.data;
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return false;
+    }
+    throw error;
+  }
+
+  return Boolean(data);
+}
+
+async function touchAlbum(supabase: SupabaseServerClient, albumId: string) {
+  await (supabase.from('albums') as any)
+    .update({ updated_at: new Date().toISOString() })
+    .eq('id', albumId);
+}
+
+function extractStoragePath(publicUrl: string): string | null {
+  try {
+    const parsed = new URL(publicUrl);
+    const marker = '/storage/v1/object/public/stickers/';
+    const index = parsed.pathname.indexOf(marker);
+    if (index === -1) {
+      return null;
+    }
+    return decodeURIComponent(parsed.pathname.slice(index + marker.length));
+  } catch (error) {
+    console.error('[packs] Failed to parse sticker public url', error);
+    return null;
+  }
+}
+
+function resolveFileName(position: number, sticker: StickerRow, storagePath: string): string {
+  const fallback = `sticker-${position + 1}`;
+  const base = slugify(sticker.title ?? fallback) || fallback;
+  const pathSegment = storagePath.split('/').pop() ?? `${base}.webp`;
+  const extensionMatch = pathSegment.match(/\.([a-zA-Z0-9]+)(?:\?.*)?$/);
+  const extensionRaw = extensionMatch ? extensionMatch[1].toLowerCase() : 'png';
+  const extension = extensionRaw === 'jpeg' ? 'jpg' : extensionRaw;
+  return `${String(position + 1).padStart(2, '0')}-${base}.${extension}`;
+}
+
+async function downloadStickerBuffer(
+  supabase: SupabaseServerClient,
+  storagePath: string,
+): Promise<Buffer> {
+  const { data, error } = await supabase.storage.from('stickers').download(storagePath);
+  if (error || !data) {
+    throw new Error(error?.message ?? 'Gagal mengunduh file sticker');
+  }
+
+  const arrayBuffer = await data.arrayBuffer();
+  return Buffer.from(arrayBuffer);
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = getSupabaseServerClient();
+  const supabase = getServerClient();
 
-  // auth
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // body
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  if (userError) {
+    return NextResponse.json({ error: userError.message }, { status: 401 });
   }
 
-  const { albumId, name, author, stickerIds } = (body as any) ?? {};
-  if (!albumId || !name) {
-    return NextResponse.json({ error: 'albumId dan name wajib diisi' }, { status: 400 });
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // izin
-  const allowed = await canWriteAlbum(user.id, String(albumId));
-  if (!allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const body = await req.json().catch(() => null);
+  const parsed = createPackSchema.safeParse(body);
 
-  // slug unik
-  const baseSlug = slugify(String(name));
-  const suffix = Math.random().toString(36).slice(2, 8);
-  const slug = `${baseSlug}-${suffix}`;
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  }
 
-  // insert pack
-  const packRes = await supabase
-    .from('packs')
+  const { albumId, name, author, stickerIds } = parsed.data;
+
+  const allowed = await canWriteAlbum(supabase, user.id, albumId);
+  if (!allowed) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const { data: stickerRows, error: stickerError } = await (supabase.from('stickers') as any)
+    .select('id, album_id, file_url, thumb_url, title')
+    .in('id', stickerIds)
+    .eq('album_id', albumId);
+
+  if (stickerError) {
+    return NextResponse.json({ error: stickerError.message }, { status: 500 });
+  }
+
+  const stickerMap = new Map(
+    ((stickerRows as StickerRow[]) ?? []).map((sticker) => [sticker.id, sticker]),
+  );
+
+  const orderedStickers: StickerRow[] = [];
+  for (const id of stickerIds) {
+    const sticker = stickerMap.get(id);
+    if (!sticker) {
+      return NextResponse.json({ error: 'Sticker tidak ditemukan dalam album' }, { status: 400 });
+    }
+    orderedStickers.push(sticker);
+  }
+
+  const packId = randomUUID();
+  const zip = new JSZip();
+
+  for (let index = 0; index < orderedStickers.length; index += 1) {
+    const sticker = orderedStickers[index];
+    const storagePath = extractStoragePath(sticker.file_url);
+    if (!storagePath) {
+      return NextResponse.json({ error: 'URL sticker tidak valid' }, { status: 400 });
+    }
+
+    const buffer = await downloadStickerBuffer(supabase, storagePath);
+    const fileName = resolveFileName(index, sticker, storagePath);
+    zip.file(fileName, buffer);
+  }
+
+  const zipBuffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+  const objectPath = `${albumId}/${packId}.zip`;
+
+  const { error: uploadError } = await supabase.storage.from('packs').upload(objectPath, zipBuffer, {
+    cacheControl: '3600',
+    contentType: 'application/zip',
+    upsert: true,
+  });
+
+  if (uploadError) {
+    return NextResponse.json({ error: uploadError.message }, { status: 500 });
+  }
+
+  const { data: publicUrlData } = supabase.storage.from('packs').getPublicUrl(objectPath);
+  const exportedUrl = publicUrlData.publicUrl;
+
+  const { data: insertedPack, error: insertError } = await (supabase.from('packs') as any)
     .insert({
-      album_id: String(albumId),
-      name: String(name),
-      author: author ? String(author) : null,
-      slug,
-      is_public: false,
+      id: packId,
+      album_id: albumId,
+      owner_id: user.id,
+      name,
+      author: author ?? null,
+      exported_zip_url: exportedUrl,
     })
     .select('id, exported_zip_url')
     .maybeSingle();
 
-  if (packRes.error) {
-    return NextResponse.json({ error: packRes.error.message }, { status: 400 });
-  }
-  const pack = packRes.data as PackRow | null;
-  if (!pack) {
-    return NextResponse.json({ error: 'Failed to create pack' }, { status: 500 });
+  if (insertError || !insertedPack) {
+    return NextResponse.json(
+      { error: insertError?.message ?? 'Gagal menyimpan pack' },
+      { status: 500 },
+    );
   }
 
-  // (opsional) simpan items
-  if (Array.isArray(stickerIds) && stickerIds.length > 0) {
-    const { error: itemsError } = await supabase
-      .from('pack_items')
-      .insert(
-        (stickerIds as string[]).map((sid, i) => ({
-          pack_id: pack.id,
-          sticker_id: sid,
-          order_index: i,
-        }))
-      );
+  const packStickerPayload = orderedStickers.map((sticker, index) => ({
+    pack_id: packId,
+    sticker_id: sticker.id,
+    ord: index,
+  }));
 
-    if (itemsError) {
-      console.warn('[packs POST] skip inserting pack_items:', itemsError.message);
+  if (packStickerPayload.length > 0) {
+    const { error: packStickerError } = await (supabase.from('pack_stickers') as any).insert(
+      packStickerPayload,
+    );
+    if (packStickerError) {
+      console.error('[packs] Failed to store pack stickers', packStickerError.message);
     }
   }
 
+  await touchAlbum(supabase, albumId);
+
   return NextResponse.json({
-    id: pack.id,
-    exported_zip_url: pack.exported_zip_url ?? null,
+    id: insertedPack.id as string,
+    exported_zip_url: (insertedPack as { exported_zip_url: string | null }).exported_zip_url ?? null,
   });
 }

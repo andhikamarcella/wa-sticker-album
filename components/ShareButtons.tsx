@@ -1,78 +1,117 @@
 'use client';
 
-import { useState } from 'react';
-import { Copy, QrCode, Share2, Smartphone } from 'lucide-react';
-import { Button } from './ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Copy, MessageCircle } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/useToast';
 
-interface ShareButtonsProps {
-  albumId: string;
-  albumName: string;
+export type ShareButtonsProps = {
   publicUrl: string;
-}
+  waUrl?: string;
+  [key: string]: unknown;
+};
 
-export function ShareButtons({ albumId, albumName, publicUrl }: ShareButtonsProps) {
+export function ShareButtons({ publicUrl, waUrl }: ShareButtonsProps) {
   const { showToast } = useToast();
-  const [qrData, setQrData] = useState<string>('');
-  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const copyLink = async () => {
-    await navigator.clipboard.writeText(publicUrl);
-    showToast({ title: 'Tautan disalin', variant: 'success' });
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  const shareUrl = useMemo(() => {
+    if (waUrl && waUrl.trim().length > 0) {
+      return waUrl.trim();
+    }
+
+    return `https://wa.me/?text=${encodeURIComponent(publicUrl)}`;
+  }, [publicUrl, waUrl]);
+
+  const handleCopy = async () => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(publicUrl);
+      } else if (typeof document !== 'undefined') {
+        const textarea = document.createElement('textarea');
+        textarea.value = publicUrl;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'absolute';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+
+      setCopied(true);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = setTimeout(() => setCopied(false), 2000);
+
+      showToast({
+        title: 'Link copied',
+        description: 'The public album link is ready to share.',
+        variant: 'success',
+      });
+    } catch (error) {
+      showToast({
+        title: 'Unable to copy link',
+        description:
+          error instanceof Error ? error.message : 'Please copy the link manually.',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const shareWhatsapp = async () => {
-    setLoading(true);
-    const response = await fetch('/api/share/whatsapp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ albumUrl: publicUrl, albumName })
-    });
-    setLoading(false);
-    if (!response.ok) {
-      showToast({ title: 'Gagal', description: 'Tidak dapat membuat tautan WhatsApp', variant: 'destructive' });
+  const handleWhatsAppShare = () => {
+    const targetUrl = shareUrl;
+    if (!targetUrl) {
+      showToast({
+        title: 'Cannot open WhatsApp',
+        description: 'No share URL available yet.',
+        variant: 'destructive',
+      });
       return;
     }
-    const data = await response.json();
-    window.open(data.waUrl, '_blank');
-    setQrData(data.qrDataUrl);
+
+    if (typeof window !== 'undefined') {
+      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    }
   };
 
   return (
-    <div className="flex flex-wrap gap-3">
-      <Button onClick={copyLink} variant="secondary">
-        <Copy className="mr-2 h-4 w-4" /> Salin Link
-      </Button>
-      <Button onClick={shareWhatsapp} disabled={loading}>
-        <Smartphone className="mr-2 h-4 w-4" /> {loading ? 'Menyiapkan...' : 'Bagikan ke WhatsApp'}
-      </Button>
-      <Dialog>
-        <DialogTrigger asChild>
-          <Button variant="outline">
-            <QrCode className="mr-2 h-4 w-4" /> QR Code
-          </Button>
-        </DialogTrigger>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>QR Code Album</DialogTitle>
-            <DialogDescription>Pindai untuk membuka album ini.</DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col items-center gap-4">
-            {qrData ? (
-              <img src={qrData} alt="QR" className="h-48 w-48" />
-            ) : (
-              <p className="text-sm text-muted-foreground">Bagikan ke WhatsApp terlebih dahulu untuk membuat QR.</p>
-            )}
-            <a href={publicUrl} className="text-sm text-primary underline" target="_blank" rel="noreferrer">
-              {publicUrl}
-            </a>
-          </div>
-        </DialogContent>
-      </Dialog>
-      <Button variant="ghost" onClick={() => window.open(publicUrl, '_blank')}>
-        <Share2 className="mr-2 h-4 w-4" /> Buka Publik
-      </Button>
+    <div className="flex w-full flex-col gap-3 rounded-3xl border border-border/80 bg-card/80 p-4 shadow-sm sm:flex-row sm:items-center sm:gap-4">
+      <div className="flex-1 space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Public link</p>
+        <Input
+          value={publicUrl}
+          readOnly
+          className="h-11 rounded-2xl border-muted bg-muted/40 font-mono text-xs text-muted-foreground sm:text-sm"
+        />
+      </div>
+      <div className="flex flex-shrink-0 items-center gap-2">
+        <Button
+          type="button"
+          variant={copied ? 'secondary' : 'outline'}
+          onClick={handleCopy}
+          className="h-11 rounded-full px-5"
+        >
+          <Copy className="mr-2 h-4 w-4" aria-hidden />
+          {copied ? 'Copied' : 'Copy link'}
+        </Button>
+        <Button type="button" onClick={handleWhatsAppShare} className="h-11 rounded-full px-5">
+          <MessageCircle className="mr-2 h-4 w-4" aria-hidden />
+          WhatsApp
+        </Button>
+      </div>
     </div>
   );
 }
