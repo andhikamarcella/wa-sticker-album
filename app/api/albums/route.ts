@@ -3,6 +3,13 @@ import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
 import { getServerClient, type SupabaseServerClient } from '@/lib/supabaseServer';
+import { isSupabaseConfigured } from '@/lib/env';
+import {
+  mockCreateAlbum,
+  mockListAlbumsByOwner,
+  mockListStickers,
+  type MockAlbum,
+} from '@/lib/mockDb';
 import { slugify } from '@/lib/slug';
 
 const createAlbumSchema = z.object({
@@ -40,12 +47,49 @@ type ListResponse = {
 };
 
 export async function GET(request: NextRequest) {
-  const supabase = getServerClient();
   const url = new URL(request.url);
   const scopeParam = url.searchParams.get('scope');
   const searchQuery = url.searchParams.get('q')?.trim() ?? '';
   const scopeResult = scopeSchema.safeParse(scopeParam);
   const scope = scopeResult.success ? scopeResult.data : 'all';
+
+  if (!isSupabaseConfigured()) {
+    const ownerId = 'local-user';
+    const normalizedSearch = searchQuery.toLowerCase();
+    const ownedAlbums = mockListAlbumsByOwner(ownerId);
+    let albums: MockAlbum[] = [];
+
+    if (scope === 'owned' || scope === 'all') {
+      albums = ownedAlbums;
+    }
+
+    if (scope === 'shared') {
+      albums = [];
+    }
+
+    if (normalizedSearch) {
+      albums = albums.filter((album) => album.name.toLowerCase().includes(normalizedSearch));
+    }
+
+    const detailedAlbums = albums
+      .map((album) => {
+        const stickers = mockListStickers(album.id);
+        return {
+          id: album.id,
+          name: album.name,
+          slug: album.slug,
+          visibility: album.visibility,
+          updatedAt: album.updatedAt,
+          stickersCount: stickers.length,
+          thumbnails: stickers.slice(0, 6).map((item) => item.thumbUrl || item.fileUrl),
+        };
+      })
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+    return NextResponse.json<ListResponse>({ data: detailedAlbums });
+  }
+
+  const supabase = getServerClient();
 
   const {
     data: { user },
@@ -121,14 +165,28 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = getServerClient();
-  const client = supabase as unknown as SupabaseClient<any>;
   const body = await request.json().catch(() => null);
   const parsed = createAlbumSchema.safeParse(body ?? {});
 
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
+
+  if (!isSupabaseConfigured()) {
+    const ownerId = 'local-user';
+    const album = mockCreateAlbum(ownerId, parsed.data.name, parsed.data.visibility ?? 'private');
+
+    return NextResponse.json({
+      id: album.id,
+      name: album.name,
+      slug: album.slug,
+      visibility: album.visibility,
+      updatedAt: album.updatedAt,
+    });
+  }
+
+  const supabase = getServerClient();
+  const client = supabase as unknown as SupabaseClient<any>;
 
   const {
     data: { user },

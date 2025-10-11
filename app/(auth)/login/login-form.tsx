@@ -7,14 +7,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/useToast';
 
 export default function LoginForm() {
-  const supabase = useMemo(() => {
-    try {
-      return createClient();
-    } catch (error) {
-      console.error('Supabase client is not configured.', error);
-      return null;
-    }
-  }, []);
+  const supabase = useMemo(() => createClient(), []);
   const { showToast } = useToast();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
