@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/useToast';
@@ -9,12 +9,23 @@ export default function AuthCallback() {
   const router = useRouter();
   const sp = useSearchParams();
   const { showToast } = useToast();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     (async () => {
       const code = sp?.get?.('code') ?? '';
       if (!code) { router.replace('/login'); return; }
+
+      if (!supabase) {
+        showToast({
+          title: 'Konfigurasi belum lengkap',
+          description:
+            'Supabase belum terkonfigurasi. Hubungi administrator untuk melengkapi environment variable.',
+          variant: 'destructive',
+        });
+        router.replace('/login?error=magic-link');
+        return;
+      }
 
       try {
         // Kompatibel lintas versi supabase-js
