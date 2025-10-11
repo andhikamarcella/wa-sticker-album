@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { Button } from './ui/button';
@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from './ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { useToast } from '@/hooks/useToast';
+import { useProfileStorage } from '@/hooks/useProfileStorage';
 
 interface AlbumWizardProps {
   children: React.ReactNode;
@@ -21,6 +22,15 @@ export function AlbumWizard({ children }: AlbumWizardProps) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const router = useRouter();
+  const { profile, loaded } = useProfileStorage();
+
+  useEffect(() => {
+    if (!open || !loaded) {
+      return;
+    }
+
+    setVisibility(profile.defaultAlbumVisibility);
+  }, [open, loaded, profile.defaultAlbumVisibility]);
 
   const { data: albums } = useQuery({
     queryKey: ['albums'],
@@ -39,7 +49,10 @@ export function AlbumWizard({ children }: AlbumWizardProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, visibility })
       });
-      if (!response.ok) throw new Error('Gagal membuat album');
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(((payload as { error?: string }).error ?? 'Gagal membuat album'));
+      }
       return response.json();
     },
     onSuccess: () => {
@@ -47,6 +60,7 @@ export function AlbumWizard({ children }: AlbumWizardProps) {
       showToast({ title: 'Album dibuat', variant: 'success' });
       setOpen(false);
       setName('');
+      setVisibility(profile.defaultAlbumVisibility);
       router.refresh();
     },
     onError: (error: unknown) => {

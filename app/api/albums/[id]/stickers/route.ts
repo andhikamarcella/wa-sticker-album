@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { getServerClient, type SupabaseServerClient } from '@/lib/supabaseServer';
+import { getSupabaseMissingMessage, isSupabaseConfigured } from '@/lib/env';
 
 const ACCEPTED_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
@@ -103,6 +104,10 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } },
 ) {
+  if (!isSupabaseConfigured()) {
+    return NextResponse.json({ error: getSupabaseMissingMessage() }, { status: 503 });
+  }
+
   const supabase = getServerClient();
   const albumId = params.id;
 
@@ -141,6 +146,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } },
 ) {
+  if (!isSupabaseConfigured()) {
+    return NextResponse.json({ error: getSupabaseMissingMessage() }, { status: 503 });
+  }
+
   const supabase = getServerClient();
   const albumId = params.id;
 
@@ -251,6 +260,10 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } },
 ) {
+  if (!isSupabaseConfigured()) {
+    return NextResponse.json({ error: getSupabaseMissingMessage() }, { status: 503 });
+  }
+
   const supabase = getServerClient();
   const albumId = params.id;
 
@@ -299,6 +312,10 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: { id: string } },
 ) {
+  if (!isSupabaseConfigured()) {
+    return NextResponse.json({ error: getSupabaseMissingMessage() }, { status: 503 });
+  }
+
   const supabase = getServerClient();
   const albumId = params.id;
 

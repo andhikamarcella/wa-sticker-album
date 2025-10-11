@@ -3,6 +3,7 @@ import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
 import { getServerClient, type SupabaseServerClient } from '@/lib/supabaseServer';
+import { getSupabaseMissingMessage, isSupabaseConfigured } from '@/lib/env';
 import { slugify } from '@/lib/slug';
 
 const createAlbumSchema = z.object({
@@ -40,6 +41,10 @@ type ListResponse = {
 };
 
 export async function GET(request: NextRequest) {
+  if (!isSupabaseConfigured()) {
+    return NextResponse.json({ error: getSupabaseMissingMessage() }, { status: 503 });
+  }
+
   const supabase = getServerClient();
   const url = new URL(request.url);
   const scopeParam = url.searchParams.get('scope');
@@ -121,6 +126,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!isSupabaseConfigured()) {
+    return NextResponse.json({ error: getSupabaseMissingMessage() }, { status: 503 });
+  }
+
   const supabase = getServerClient();
   const client = supabase as unknown as SupabaseClient<any>;
   const body = await request.json().catch(() => null);

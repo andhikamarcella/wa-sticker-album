@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/useToast';
@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/useToast';
 function CallbackInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -17,6 +17,17 @@ function CallbackInner() {
       // Pakai optional chaining supaya aman bagi TS
       const code = searchParams?.get('code') ?? '';
       if (!code) {
+        router.replace('/login');
+        return;
+      }
+
+      if (!supabase) {
+        showToast({
+          title: 'Konfigurasi belum lengkap',
+          description:
+            'Supabase belum terkonfigurasi. Hubungi administrator untuk melengkapi environment variable.',
+          variant: 'destructive',
+        });
         router.replace('/login');
         return;
       }
