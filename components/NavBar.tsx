@@ -1,74 +1,71 @@
 'use client';
 
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { Search, User } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
+import { type ChangeEvent, useMemo } from 'react';
+import { Search } from 'lucide-react';
+
+import { cn } from '@/lib/utils';
+
 import { ThemeToggle } from './ThemeToggle';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
-import { createClient } from '@/lib/supabaseClient';
+import { Input } from './ui/input';
 
-export function NavBar() {
-  const [query, setQuery] = useState('');
-  const router = useRouter();
+export type NavBarProps = {
+  searchValue: string;
+  onSearchChange: (value: string) => void;
+  userLabel?: string | null;
+};
 
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      const params = new URLSearchParams(window.location.search);
-      if (query) {
-        params.set('q', query);
-      } else {
-        params.delete('q');
-      }
-      router.push(`?${params.toString()}`);
-    }, 400);
-    return () => clearTimeout(timeout);
-  }, [query, router]);
+export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) {
+  const initials = useMemo(() => {
+    const source = userLabel?.trim();
+    if (!source) {
+      return '?';
+    }
 
-  const supabase = createClient();
+    const [firstWord] = source.split(/\s+/);
+    return firstWord?.charAt(0)?.toUpperCase() || '?';
+  }, [userLabel]);
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    router.refresh();
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onSearchChange(event.target.value);
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4">
-        <Link href="/" className="flex items-center gap-2 text-lg font-semibold">
-          <span className="rounded-full bg-primary px-2 py-1 text-xs uppercase tracking-wide text-primary-foreground">
-            WA
-          </span>
-          Sticker Album
-        </Link>
-        <div className="hidden flex-1 items-center gap-3 md:flex">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Cari album..."
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              className="pl-10"
-            />
+    <header className="w-full px-4 py-4">
+      <div
+        className={cn(
+          'mx-auto flex w-full max-w-6xl flex-col gap-4 rounded-3xl border border-border bg-card/80 p-4 shadow-sm backdrop-blur-sm transition-colors',
+          'md:flex-row md:items-center md:justify-between md:gap-6',
+        )}
+      >
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col">
+            <span className="text-sm font-semibold uppercase tracking-widest text-primary">Sticker Album</span>
+            <span className="text-xs text-muted-foreground">Organize and share your WhatsApp stickers</span>
+          </div>
+          <div className="flex items-center gap-2 md:hidden">
+            <ThemeToggle />
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-sm font-medium text-muted-foreground">
+              {initials}
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <User className="h-5 w-5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard">Dashboard</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={signOut}>Keluar</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <div className="flex flex-1 items-center gap-4">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchValue}
+              onChange={handleChange}
+              placeholder="Search albums"
+              className="h-11 rounded-2xl border-border pl-10"
+              aria-label="Search albums"
+            />
+          </div>
+          <div className="hidden items-center gap-2 md:flex">
+            <ThemeToggle />
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-sm font-medium text-muted-foreground">
+              {initials}
+            </div>
+          </div>
         </div>
       </div>
     </header>
