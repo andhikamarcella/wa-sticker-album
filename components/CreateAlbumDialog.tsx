@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 
@@ -16,6 +16,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/useToast';
 import { cn } from '@/lib/utils';
+import { useProfileStorage } from '@/hooks/useProfileStorage';
 
 const formSchema = z.object({
   name: z.string().trim().min(1, 'Name is required').max(120, 'Name is too long'),
@@ -51,6 +52,24 @@ export function CreateAlbumDialog({ children }: CreateAlbumDialogProps) {
   const [values, setValues] = useState<FormValues>({ name: '', visibility: 'private' });
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const { profile, loaded } = useProfileStorage();
+  const defaultVisibility = useMemo(
+    () => (loaded ? profile.defaultAlbumVisibility : 'private'),
+    [loaded, profile.defaultAlbumVisibility],
+  );
+
+  useEffect(() => {
+    if (!open || !loaded) {
+      return;
+    }
+
+    setValues((prev) => {
+      if (prev.visibility === profile.defaultAlbumVisibility) {
+        return prev;
+      }
+      return { ...prev, visibility: profile.defaultAlbumVisibility };
+    });
+  }, [open, loaded, profile.defaultAlbumVisibility]);
 
   const mutation = useMutation({
     mutationFn: async (payload: FormValues) => {
@@ -75,7 +94,7 @@ export function CreateAlbumDialog({ children }: CreateAlbumDialogProps) {
         title: 'Album created',
         variant: 'success',
       });
-      setValues({ name: '', visibility: 'private' });
+      setValues({ name: '', visibility: defaultVisibility });
       setOpen(false);
     },
     onError: (error: Error) => {
@@ -113,7 +132,7 @@ export function CreateAlbumDialog({ children }: CreateAlbumDialogProps) {
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
         if (!nextOpen) {
-          setValues({ name: '', visibility: 'private' });
+          setValues({ name: '', visibility: defaultVisibility });
         }
       }}
     >

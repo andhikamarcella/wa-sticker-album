@@ -3,6 +3,7 @@ import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
 import { getServerClient } from '@/lib/supabaseServer';
+import { getSupabaseMissingMessage, isSupabaseConfigured } from '@/lib/env';
 import { slugify } from '@/lib/slug';
 
 const updateAlbumSchema = z
@@ -25,6 +26,10 @@ type AlbumRow = {
 };
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+  if (!isSupabaseConfigured()) {
+    return NextResponse.json({ error: getSupabaseMissingMessage() }, { status: 503 });
+  }
+
   const supabase = getServerClient();
   const client = supabase as unknown as SupabaseClient<any>;
   const body = await request.json().catch(() => ({}));
@@ -110,6 +115,10 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 }
 
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
+  if (!isSupabaseConfigured()) {
+    return NextResponse.json({ error: getSupabaseMissingMessage() }, { status: 503 });
+  }
+
   const supabase = getServerClient();
   const client = supabase as unknown as SupabaseClient<any>;
   const albumId = params.id;
