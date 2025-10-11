@@ -1,24 +1,49 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/useToast';
 
 export default function LoginForm() {
-  const supabase = createClient();
+  const supabase = useMemo(() => {
+    try {
+      return createClient();
+    } catch (error) {
+      console.error('Supabase client is not configured.', error);
+      return null;
+    }
+  }, []);
   const { showToast } = useToast();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Selalu pakai domain yang konsisten
-  const redirectOrigin =
-    process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+  const redirectOrigin = useMemo(() => {
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+    if (siteUrl && siteUrl.length > 0) {
+      return siteUrl;
+    }
+
+    if (typeof window !== 'undefined' && window.location) {
+      return window.location.origin;
+    }
+
+    return 'http://localhost:3000';
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!email) return;
+    if (!supabase) {
+      showToast({
+        title: 'Konfigurasi belum lengkap',
+        description: 'Supabase belum terkonfigurasi. Hubungi administrator.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithOtp({

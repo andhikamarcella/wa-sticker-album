@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
+
 import { zipRequestSchema } from '@/lib/zod-schemas';
-import { supabaseAdmin } from '@/lib/db';
+import { getSupabaseAdmin } from '@/lib/db';
 import { buildPackZip } from '@/lib/zip';
 
 const PACK_BUCKET = 'packs';
@@ -12,6 +13,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
+  const supabaseAdmin = getSupabaseAdmin();
   const { stickerIds, packName, author } = parsed.data;
   const { data: stickers, error } = await supabaseAdmin
     .from('stickers')
@@ -25,7 +27,7 @@ export async function POST(request: Request) {
   const filePath = `packs/${packName.replace(/\s+/g, '_')}_${Date.now()}.zip`;
   const { error: uploadError } = await supabaseAdmin.storage.from(PACK_BUCKET).upload(filePath, zipBuffer, {
     contentType: 'application/zip',
-    upsert: false
+    upsert: false,
   });
   if (uploadError) {
     return NextResponse.json({ error: uploadError.message }, { status: 500 });

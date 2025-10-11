@@ -1,4 +1,5 @@
 import { notFound, redirect } from 'next/navigation';
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UploadDropzone } from '@/components/UploadDropzone';
 import { StickerGrid } from '@/components/StickerGrid';
@@ -6,57 +7,71 @@ import { PackBuilder } from '@/components/PackBuilder';
 import { ShareButtons } from '@/components/ShareButtons';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { getServerClient } from '@/lib/supabaseServer';
 import { slugify } from '@/lib/slug';
+
+import type { Database } from '@/types/database';
+
+type AlbumRow = Database['public']['Tables']['albums']['Row'];
+type AlbumUpdate = Database['public']['Tables']['albums']['Update'];
 
 type AlbumPageProps = {
   params: { slug: string };
 };
 
 export default async function AlbumPage({ params }: AlbumPageProps) {
-  const supabase = getSupabaseServerClient();
+  const supabase = getServerClient();
 
-  // auth
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  // ambil album by slug (BUKAN id)
   const { data: album, error } = await supabase
     .from('albums')
     .select('*')
     .eq('slug', params.slug)
-    .single();
+    .maybeSingle<AlbumRow>();
 
-  if (!album || error) notFound();
+  if (error) {
+    if (error.code === 'PGRST116' || error.code === '42501') {
+      notFound();
+    }
 
-  // pakai env yang ada di Vercel
+    throw error;
+  }
+
+  if (!album) {
+    notFound();
+  }
+
+  const albumRow: AlbumRow = album;
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
-  const publicUrl = `${baseUrl}/albums/${album.slug}`;
+  const publicUrl = `${baseUrl}/albums/${albumRow.slug}`;
 
-  // server action untuk update album
   async function updateAlbum(formData: FormData) {
     'use server';
     const name = formData.get('name')?.toString().trim();
-    const visibility = (formData.get('visibility')?.toString() ??
-      album.visibility) as 'public' | 'unlisted' | 'private';
+    const visibility = (formData.get('visibility')?.toString() ?? albumRow.visibility) as AlbumRow['visibility'];
 
-    const supabaseServer = getSupabaseServerClient();
-    await supabaseServer
-      .from('albums')
-      .update({
-        name: name && name.length ? name : album.name,
-        slug: name && name.length ? slugify(name) : album.slug,
-        visibility,
-      })
-      .eq('id', album.id); // update tetap aman pakai primary key id
+    const payload: AlbumUpdate = {
+      name: name && name.length ? name : albumRow.name,
+      slug: name && name.length ? slugify(name) : albumRow.slug,
+      visibility,
+    };
+
+    const supabaseServer = getServerClient();
+    await (supabaseServer.from('albums') as unknown as {
+      update(values: AlbumUpdate): { eq(column: string, value: string): Promise<unknown> };
+    })
+      .update(payload)
+      .eq('id', albumRow.id);
   }
 
   return (
     <div className="space-y-8">
       <div className="space-y-2">
-        <h1 className="text-3xl font-bold">{album.name}</h1>
+        <h1 className="text-3xl font-bold">{albumRow.name}</h1>
         <p className="text-sm text-muted-foreground">
           Kelola sticker, pack, dan bagikan album ini.
         </p>
@@ -72,7 +87,7 @@ export default async function AlbumPage({ params }: AlbumPageProps) {
 
         <TabsContent value="stickers">
           <div className="space-y-8">
-            <UploadDropzone albumId={album.id} />
+            <UploadDropzone albumId={albumRow.id} />
             <div className="rounded-3xl border border-border bg-background p-6">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-xl font-semibold">Sticker dalam album</h2>
@@ -82,13 +97,13 @@ export default async function AlbumPage({ params }: AlbumPageProps) {
                   <span>Reorder & tag batch</span>
                 </div>
               </div>
-              <StickerGrid albumId={album.id} />
+              <StickerGrid albumId={albumRow.id} />
             </div>
           </div>
         </TabsContent>
 
         <TabsContent value="pack">
-          <PackBuilder albumId={album.id} />
+          <PackBuilder albumId={albumRow.id} />
         </TabsContent>
 
         <TabsContent value="share">
@@ -96,7 +111,7 @@ export default async function AlbumPage({ params }: AlbumPageProps) {
             <p className="text-sm text-muted-foreground">
               Bagikan album ini via tautan publik atau WhatsApp. QR code akan dibuat otomatis.
             </p>
-            <ShareButtons albumId={album.id} albumName={album.name} publicUrl={publicUrl} />
+            <ShareButtons albumId={albumRow.id} albumName={albumRow.name} publicUrl={publicUrl} />
           </div>
         </TabsContent>
 
@@ -104,13 +119,13 @@ export default async function AlbumPage({ params }: AlbumPageProps) {
           <form action={updateAlbum} className="space-y-4">
             <div>
               <label className="text-sm font-medium">Nama album</label>
-              <Input name="name" defaultValue={album.name} className="mt-2" />
+              <Input name="name" defaultValue={albumRow.name} className="mt-2" />
             </div>
             <div>
               <label className="text-sm font-medium">Visibilitas</label>
               <select
                 name="visibility"
-                defaultValue={album.visibility}
+                defaultValue={albumRow.visibility}
                 className="mt-2 w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm"
               >
                 <option value="public">Publik</option>
@@ -125,4 +140,3 @@ export default async function AlbumPage({ params }: AlbumPageProps) {
     </div>
   );
 }
-

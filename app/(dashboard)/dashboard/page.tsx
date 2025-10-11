@@ -1,10 +1,23 @@
 import { redirect } from 'next/navigation';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+
+import Providers from '@/components/Providers';
+import { DashboardShell } from './_components/dashboard-shell';
+import { getServerUser } from '@/lib/supabaseServer';
 
 export default async function DashboardPage() {
-  const supabase = getSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  const { user } = await getServerUser();
 
-  return <div className="p-6">Halo, {user.email}</div>;
+  if (!user) {
+    redirect('/login');
+  }
+
+  const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const fullName = typeof metadata.full_name === 'string' ? metadata.full_name : undefined;
+  const displayLabel = fullName && fullName.trim().length > 0 ? fullName : user.email ?? user.phone ?? undefined;
+
+  return (
+    <Providers>
+      <DashboardShell userLabel={displayLabel} />
+    </Providers>
+  );
 }

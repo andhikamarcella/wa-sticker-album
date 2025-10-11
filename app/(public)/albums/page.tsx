@@ -1,15 +1,25 @@
 import { AlbumCard } from '@/components/AlbumCard';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { getServerClient } from '@/lib/supabaseServer';
+import type { Database } from '@/types/database';
 
 export const dynamic = 'force-dynamic';
 
+type AlbumRow = Database['public']['Tables']['albums']['Row'];
+type PublicAlbum = Pick<AlbumRow, 'id' | 'name' | 'slug' | 'visibility' | 'updated_at'>;
+
 export default async function PublicAlbumsPage() {
-  const supabase = getSupabaseServerClient();
-  const { data } = await supabase
+  const supabase = getServerClient();
+  const { data, error } = await supabase
     .from('albums')
-    .select('*')
+    .select('id, name, slug, visibility, updated_at')
     .in('visibility', ['public', 'unlisted'])
     .order('created_at', { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  const albums = (data ?? []) as PublicAlbum[];
 
   return (
     <div className="space-y-8">
@@ -19,11 +29,27 @@ export default async function PublicAlbumsPage() {
           Jelajahi koleksi sticker yang bisa kamu unduh dan bagikan.
         </p>
       </div>
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {data?.map((album) => (
-          <AlbumCard key={album.id} {...album} hideActions />
-        )) ?? <p>Tidak ada album.</p>}
-      </div>
+      {albums.length > 0 ? (
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {albums.map((album) => (
+            <AlbumCard
+              key={album.id}
+              id={album.id}
+              name={album.name}
+              slug={album.slug}
+              visibility={album.visibility}
+              updatedAt={album.updated_at ?? ''}
+              stickersCount={undefined}
+              thumbnails={[]}
+              href={`/p/${album.slug}`}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-3xl border border-dashed border-border/60 bg-card/50 p-8 text-center text-sm text-muted-foreground">
+          Tidak ada album.
+        </p>
+      )}
     </div>
   );
 }
