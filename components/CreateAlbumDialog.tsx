@@ -4,6 +4,10 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 
+import { useProfileStorage } from '@/hooks/useProfileStorage';
+import { useToast } from '@/hooks/useToast';
+import { cn } from '@/lib/utils';
+
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -14,9 +18,6 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { useToast } from '@/hooks/useToast';
-import { cn } from '@/lib/utils';
-import { useProfileStorage } from '@/hooks/useProfileStorage';
 
 const formSchema = z.object({
   name: z.string().trim().min(1, 'Name is required').max(120, 'Name is too long'),
@@ -48,28 +49,25 @@ const visibilityOptions: { value: FormValues['visibility']; label: string; descr
 ];
 
 export function CreateAlbumDialog({ children }: CreateAlbumDialogProps) {
-  const [open, setOpen] = useState(false);
-  const [values, setValues] = useState<FormValues>({ name: '', visibility: 'private' });
-  const queryClient = useQueryClient();
-  const { showToast } = useToast();
   const { profile, loaded } = useProfileStorage();
   const defaultVisibility = useMemo(
     () => (loaded ? profile.defaultAlbumVisibility : 'private'),
     [loaded, profile.defaultAlbumVisibility],
   );
+  const [open, setOpen] = useState(false);
+  const [values, setValues] = useState<FormValues>(() => ({ name: '', visibility: defaultVisibility }));
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
 
   useEffect(() => {
-    if (!open || !loaded) {
-      return;
-    }
+    if (!loaded) return;
+    setValues((prev) => ({ ...prev, visibility: defaultVisibility }));
+  }, [loaded, defaultVisibility]);
 
-    setValues((prev) => {
-      if (prev.visibility === profile.defaultAlbumVisibility) {
-        return prev;
-      }
-      return { ...prev, visibility: profile.defaultAlbumVisibility };
-    });
-  }, [open, loaded, profile.defaultAlbumVisibility]);
+  useEffect(() => {
+    if (open || !loaded) return;
+    setValues({ name: '', visibility: defaultVisibility });
+  }, [open, loaded, defaultVisibility]);
 
   const mutation = useMutation({
     mutationFn: async (payload: FormValues) => {
@@ -137,7 +135,7 @@ export function CreateAlbumDialog({ children }: CreateAlbumDialogProps) {
       }}
     >
       <DialogTrigger asChild>{children ?? <Button className="rounded-2xl">Create album</Button>}</DialogTrigger>
-      <DialogContent>
+      <DialogContent className="rounded-3xl">
         <DialogHeader>
           <DialogTitle>Create a new album</DialogTitle>
           <DialogDescription>Organize your stickers into a new collection.</DialogDescription>
@@ -173,6 +171,7 @@ export function CreateAlbumDialog({ children }: CreateAlbumDialogProps) {
                     )}
                     onClick={() => setValues((prev) => ({ ...prev, visibility: option.value }))}
                     disabled={mutation.isPending}
+                    aria-pressed={isActive}
                   >
                     <span className="text-sm font-semibold">{option.label}</span>
                     <span className="text-xs text-muted-foreground">{option.description}</span>

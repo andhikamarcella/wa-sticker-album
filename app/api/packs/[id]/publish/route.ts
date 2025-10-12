@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, type SupabaseServerClient } from '@/lib/supabaseServer';
 import { isSupabaseConfigured, resolveAppUrl } from '@/lib/env';
 import { mockGetAlbum, mockGetPack, mockPublishPack } from '@/lib/mockDb';
+import { SupabaseSchemaMissingError, shouldUseMockFromSupabaseError } from '@/lib/utils';
 
 type PackRow = {
   id: string;
@@ -31,6 +32,9 @@ async function fetchPack(
     if (error.code === 'PGRST116') {
       return null;
     }
+    if (shouldUseMockFromSupabaseError(error)) {
+      throw new SupabaseSchemaMissingError(error.message);
+    }
     throw error;
   }
 
@@ -49,6 +53,9 @@ async function fetchAlbum(
   if (error) {
     if (error.code === 'PGRST116') {
       return null;
+    }
+    if (shouldUseMockFromSupabaseError(error)) {
+      throw new SupabaseSchemaMissingError(error.message);
     }
     throw error;
   }
@@ -80,6 +87,9 @@ async function canWriteAlbum(
     if (error.code === 'PGRST116') {
       return false;
     }
+    if (shouldUseMockFromSupabaseError(error)) {
+      throw new SupabaseSchemaMissingError(error.message);
+    }
     throw error;
   }
 
@@ -87,86 +97,108 @@ async function canWriteAlbum(
 }
 
 async function touchAlbum(supabase: SupabaseServerClient, albumId: string) {
-  await (supabase.from('albums') as any)
+  const { error } = await (supabase.from('albums') as any)
     .update({ updated_at: new Date().toISOString() })
     .eq('id', albumId);
+  if (error && error.code !== 'PGRST116') {
+    if (shouldUseMockFromSupabaseError(error)) {
+      throw new SupabaseSchemaMissingError(error.message);
+    }
+    throw error;
+  }
+}
+
+function handleMockPublish(packId: string) {
+  const pack = mockGetPack(packId);
+  if (!pack) {
+    return NextResponse.json({ error: 'Pack tidak ditemukan' }, { status: 404 });
+  }
+
+  const album = mockGetAlbum(pack.albumId);
+  if (!album) {
+    return NextResponse.json({ error: 'Album tidak ditemukan' }, { status: 404 });
+  }
+
+  const baseUrl = resolveAppUrl().replace(/\/$/, '');
+  const publicUrl = `${baseUrl}/p/${album.slug}`;
+  const waUrl = `https://wa.me/?text=${encodeURIComponent(publicUrl)}`;
+  const updated = mockPublishPack(pack.id, publicUrl, waUrl);
+
+  if (!updated) {
+    return NextResponse.json({ error: 'Gagal memperbarui pack' }, { status: 500 });
+  }
+
+  return NextResponse.json({ publicUrl: updated.publicUrl ?? publicUrl, waUrl: updated.waShareUrl ?? waUrl });
 }
 
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
   if (!isSupabaseConfigured()) {
-    const pack = mockGetPack(params.id);
+    return handleMockPublish(params.id);
+  }
+
+  try {
+    const supabase = getServerClient();
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError) {
+      return NextResponse.json({ error: userError.message }, { status: 401 });
+    }
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const pack = await fetchPack(supabase, params.id);
     if (!pack) {
       return NextResponse.json({ error: 'Pack tidak ditemukan' }, { status: 404 });
     }
 
-    const album = mockGetAlbum(pack.albumId);
+    const album = await fetchAlbum(supabase, pack.album_id);
     if (!album) {
       return NextResponse.json({ error: 'Album tidak ditemukan' }, { status: 404 });
+    }
+
+    const allowed = await canWriteAlbum(supabase, user.id, album.id);
+    if (!allowed) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const baseUrl = resolveAppUrl().replace(/\/$/, '');
     const publicUrl = `${baseUrl}/p/${album.slug}`;
     const waUrl = `https://wa.me/?text=${encodeURIComponent(publicUrl)}`;
-    const updated = mockPublishPack(pack.id, publicUrl, waUrl);
 
-    if (!updated) {
-      return NextResponse.json({ error: 'Gagal memperbarui pack' }, { status: 500 });
+    const { data: updated, error: updateError } = await (supabase.from('packs') as any)
+      .update({ public_url: publicUrl, wa_share_url: waUrl })
+      .eq('id', pack.id)
+      .select('public_url, wa_share_url')
+      .maybeSingle();
+
+    if (updateError || !updated) {
+      if (updateError && shouldUseMockFromSupabaseError(updateError)) {
+        throw new SupabaseSchemaMissingError(updateError.message);
+      }
+      return NextResponse.json(
+        { error: updateError?.message ?? 'Gagal memperbarui pack' },
+        { status: 500 },
+      );
     }
 
-    return NextResponse.json({ publicUrl: updated.publicUrl ?? publicUrl, waUrl: updated.waShareUrl ?? waUrl });
+    await touchAlbum(supabase, album.id);
+
+    return NextResponse.json({
+      publicUrl: (updated as { public_url: string }).public_url,
+      waUrl: (updated as { wa_share_url: string }).wa_share_url,
+    });
+  } catch (error) {
+    if (error instanceof SupabaseSchemaMissingError || shouldUseMockFromSupabaseError(error)) {
+      return handleMockPublish(params.id);
+    }
+
+    console.error('Failed to publish pack', error);
+    return NextResponse.json({ error: 'Failed to publish pack' }, { status: 500 });
   }
-
-  const supabase = getServerClient();
-
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError) {
-    return NextResponse.json({ error: userError.message }, { status: 401 });
-  }
-
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const pack = await fetchPack(supabase, params.id);
-  if (!pack) {
-    return NextResponse.json({ error: 'Pack tidak ditemukan' }, { status: 404 });
-  }
-
-  const album = await fetchAlbum(supabase, pack.album_id);
-  if (!album) {
-    return NextResponse.json({ error: 'Album tidak ditemukan' }, { status: 404 });
-  }
-
-  const allowed = await canWriteAlbum(supabase, user.id, album.id);
-  if (!allowed) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
-  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000').replace(/\/$/, '');
-  const publicUrl = `${baseUrl}/p/${album.slug}`;
-  const waUrl = `https://wa.me/?text=${encodeURIComponent(publicUrl)}`;
-
-  const { data: updated, error: updateError } = await (supabase.from('packs') as any)
-    .update({ public_url: publicUrl, wa_share_url: waUrl })
-    .eq('id', pack.id)
-    .select('public_url, wa_share_url')
-    .maybeSingle();
-
-  if (updateError || !updated) {
-    return NextResponse.json(
-      { error: updateError?.message ?? 'Gagal memperbarui pack' },
-      { status: 500 },
-    );
-  }
-
-  await touchAlbum(supabase, album.id);
-
-  return NextResponse.json({
-    publicUrl: (updated as { public_url: string }).public_url,
-    waUrl: (updated as { wa_share_url: string }).wa_share_url,
-  });
 }
