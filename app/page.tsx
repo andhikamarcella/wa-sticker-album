@@ -17,7 +17,7 @@ export default function HomePage() {
             <Link href="/dashboard">Masuk Dashboard</Link>
           </Button>
           <Button asChild variant="outline" size="lg">
-            <Link href="/(public)/albums">Album Publik</Link>
+            <Link href="/albums">Album Publik</Link>
           </Button>
         </div>
       </div>
