@@ -3,7 +3,8 @@ import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
 import { getServerClient } from '@/lib/supabaseServer';
-import { getSupabaseMissingMessage, isSupabaseConfigured } from '@/lib/env';
+import { isSupabaseConfigured } from '@/lib/env';
+import { mockDeleteAlbum, mockGetAlbum, mockUpdateAlbum } from '@/lib/mockDb';
 import { slugify } from '@/lib/slug';
 
 const updateAlbumSchema = z
@@ -26,15 +27,8 @@ type AlbumRow = {
 };
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
-  if (!isSupabaseConfigured()) {
-    return NextResponse.json({ error: getSupabaseMissingMessage() }, { status: 503 });
-  }
-
-  const supabase = getServerClient();
-  const client = supabase as unknown as SupabaseClient<any>;
   const body = await request.json().catch(() => ({}));
   const parsed = updateAlbumSchema.safeParse(body ?? {});
-
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     return NextResponse.json({ error: issue?.message ?? 'Invalid payload' }, { status: 400 });
@@ -42,18 +36,32 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
   const albumId = params.id;
 
+  // Fallback dev tanpa Supabase
+  if (!isSupabaseConfigured()) {
+    const existingAlbum = mockGetAlbum(albumId);
+    if (!existingAlbum) return NextResponse.json({ error: 'Album not found' }, { status: 404 });
+
+    const updated = mockUpdateAlbum(albumId, parsed.data);
+    if (!updated) return NextResponse.json({ error: 'Failed to update album' }, { status: 500 });
+
+    return NextResponse.json({
+      id: updated.id,
+      name: updated.name,
+      slug: updated.slug,
+      visibility: updated.visibility,
+      updatedAt: updated.updatedAt,
+    });
+  }
+
+  const supabase = getServerClient();
+  const client = supabase as unknown as SupabaseClient<any>;
+
   const {
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
-
-  if (userError) {
-    return NextResponse.json({ error: userError.message }, { status: 401 });
-  }
-
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  if (userError) return NextResponse.json({ error: userError.message }, { status: 401 });
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { data: existingAlbum, error: existingError } = (await client
     .from('albums')
@@ -61,17 +69,10 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     .eq('id', albumId)
     .maybeSingle()) as { data: AlbumRow | null; error: PostgrestError | null };
 
-  if (existingError) {
-    return NextResponse.json({ error: existingError.message }, { status: 500 });
-  }
+  if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
+  if (!existingAlbum) return NextResponse.json({ error: 'Album not found' }, { status: 404 });
 
-  if (!existingAlbum) {
-    return NextResponse.json({ error: 'Album not found' }, { status: 404 });
-  }
-
-  const updatePayload: Record<string, unknown> = {
-    updated_at: new Date().toISOString(),
-  };
+  const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
   if (parsed.data.name) {
     updatePayload.name = parsed.data.name;
@@ -81,18 +82,24 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       updatePayload.slug = uniqueSlug;
     }
   }
-
-  if (parsed.data.visibility) {
-    updatePayload.visibility = parsed.data.visibility;
-  }
+  if (parsed.data.visibility) updatePayload.visibility = parsed.data.visibility;
 
   const { data, error } = (await client
     .from('albums')
-    .update(updatePayload as Record<string, unknown>)
+    .update(updatePayload)
     .eq('id', albumId)
     .select('id, name, slug, visibility, updated_at, created_at')
     .maybeSingle()) as {
-    data: { id: string; name: string; slug: string; visibility: AlbumRow['visibility']; updated_at: string | null; created_at: string | null } | null;
+    data:
+      | {
+          id: string;
+          name: string;
+          slug: string;
+          visibility: AlbumRow['visibility'];
+          updated_at: string | null;
+          created_at: string | null;
+        }
+      | null;
     error: PostgrestError | null;
   };
 
@@ -100,10 +107,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     const status = error.code === 'PGRST302' ? 403 : 500;
     return NextResponse.json({ error: error.message }, { status });
   }
-
-  if (!data) {
-    return NextResponse.json({ error: 'Failed to update album' }, { status: 500 });
-  }
+  if (!data) return NextResponse.json({ error: 'Failed to update album' }, { status: 500 });
 
   return NextResponse.json({
     id: data.id,
@@ -115,26 +119,25 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 }
 
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
+  const albumId = params.id;
+
+  // Fallback dev tanpa Supabase
   if (!isSupabaseConfigured()) {
-    return NextResponse.json({ error: getSupabaseMissingMessage() }, { status: 503 });
+    const album = mockGetAlbum(albumId);
+    if (!album) return NextResponse.json({ error: 'Album not found' }, { status: 404 });
+    mockDeleteAlbum(albumId);
+    return NextResponse.json({ success: true });
   }
 
   const supabase = getServerClient();
   const client = supabase as unknown as SupabaseClient<any>;
-  const albumId = params.id;
 
   const {
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
-
-  if (userError) {
-    return NextResponse.json({ error: userError.message }, { status: 401 });
-  }
-
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  if (userError) return NextResponse.json({ error: userError.message }, { status: 401 });
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { data: album, error: albumError } = (await client
     .from('albums')
@@ -142,23 +145,14 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
     .eq('id', albumId)
     .maybeSingle()) as { data: AlbumRow | null; error: PostgrestError | null };
 
-  if (albumError) {
-    return NextResponse.json({ error: albumError.message }, { status: 500 });
-  }
-
-  if (!album) {
-    return NextResponse.json({ error: 'Album not found' }, { status: 404 });
-  }
-
+  if (albumError) return NextResponse.json({ error: albumError.message }, { status: 500 });
+  if (!album) return NextResponse.json({ error: 'Album not found' }, { status: 404 });
   if (album.owner_id !== user.id) {
     return NextResponse.json({ error: 'Only the owner can delete this album' }, { status: 403 });
   }
 
   const { error } = await client.from('albums').delete().eq('id', albumId);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ success: true });
 }
@@ -167,6 +161,9 @@ async function ensureUniqueSlug(client: SupabaseClient<any>, baseSlug: string, c
   let candidate = baseSlug;
   let suffix = 1;
 
+  // cari slug unik; jika slug sama milik album saat ini, biarkan
+  // PGRST116 = no rows
+  // PGRST302 = permission issue (seharusnya tidak terjadi di SELECT public)
   while (true) {
     const { data, error } = await client
       .from('albums')
@@ -178,12 +175,8 @@ async function ensureUniqueSlug(client: SupabaseClient<any>, baseSlug: string, c
     if (error && error.code !== 'PGRST116') {
       throw new Error(error.message);
     }
+    if (!data || data.id === currentId) return candidate;
 
-    if (!data || data.id === currentId) {
-      return candidate;
-    }
-
-    candidate = `${baseSlug}-${suffix}`;
-    suffix += 1;
+    candidate = `${baseSlug}-${suffix++}`;
   }
 }
