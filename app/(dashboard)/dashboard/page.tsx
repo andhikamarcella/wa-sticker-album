@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 
 import Providers from '@/components/Providers';
 import { DashboardShell } from './_components/dashboard-shell';
-import { getServerUser } from '@/lib/supabaseServer';
+import getServerUser from '@/lib/supabaseServer';
 import { isSupabaseConfigured } from '@/lib/env';
 
 export default async function DashboardPage() {
