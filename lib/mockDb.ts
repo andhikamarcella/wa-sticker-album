@@ -39,10 +39,20 @@ export type MockPack = {
   updatedAt: string;
 };
 
+export type MockMessage = {
+  id: string;
+  albumId: string;
+  userId: string;
+  displayName: string;
+  body: string;
+  createdAt: string;
+};
+
 type MockDb = {
   albums: Map<string, MockAlbum>;
   stickers: Map<string, MockSticker>;
   packs: Map<string, MockPack>;
+  messages: Map<string, MockMessage>;
 };
 
 const globalStore = globalThis as typeof globalThis & { __waStickerMockDb?: MockDb };
@@ -53,6 +63,7 @@ function getStore(): MockDb {
       albums: new Map(),
       stickers: new Map(),
       packs: new Map(),
+      messages: new Map(),
     };
   }
   return globalStore.__waStickerMockDb;
@@ -132,6 +143,9 @@ export function mockDeleteAlbum(id: string): boolean {
   }
   for (const pack of Array.from(db.packs.values())) {
     if (pack.albumId === id) db.packs.delete(pack.id);
+  }
+  for (const message of Array.from(db.messages.values())) {
+    if (message.albumId === id) db.messages.delete(message.id);
   }
   return true;
 }
@@ -251,6 +265,40 @@ export function mockTouchAlbum(id: string): void {
   if (!album) return;
   album.updatedAt = new Date().toISOString();
   db.albums.set(id, album);
+}
+
+export function mockCreateMessage(params: {
+  albumId: string;
+  userId: string;
+  displayName: string;
+  body: string;
+}): MockMessage {
+  const db = getStore();
+  const createdAt = new Date().toISOString();
+  const message: MockMessage = {
+    id: randomUUID(),
+    albumId: params.albumId,
+    userId: params.userId,
+    displayName: params.displayName,
+    body: params.body,
+    createdAt,
+  };
+  db.messages.set(message.id, message);
+  return message;
+}
+
+export function mockListMessages(albumId: string, limit?: number): MockMessage[] {
+  const db = getStore();
+  const sorted = Array.from(db.messages.values())
+    .filter((message) => message.albumId === albumId)
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+  if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) {
+    const start = Math.max(0, sorted.length - Math.floor(limit));
+    return sorted.slice(start);
+  }
+
+  return sorted;
 }
 
 export function mockCreatePack(params: {
