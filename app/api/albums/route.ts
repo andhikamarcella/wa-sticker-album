@@ -69,7 +69,8 @@ export async function GET(request: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (userError) {
-      return NextResponse.json({ error: userError.message }, { status: 401 });
+      console.warn('Falling back to mock albums (auth)', userError.message);
+      return NextResponse.json<{ data: AlbumListItem[] }>({ data: buildMockAlbumItems(scope, searchQuery) });
     }
 
     if (!user) {
