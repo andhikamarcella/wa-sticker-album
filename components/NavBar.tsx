@@ -3,15 +3,15 @@
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, Globe2, Link2, Loader2, Lock, Search, Trash2 } from 'lucide-react';
 
-import { cn } from '@/lib/utils';
 import { useProfileStorage } from '@/hooks/useProfileStorage';
 import { useToast } from '@/hooks/useToast';
+import { cn } from '@/lib/utils';
 
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Textarea } from './ui/textarea';
-import { Skeleton } from './ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
 
 export type NavBarProps = {
   searchValue: string;
@@ -62,6 +62,8 @@ const albumVisibilityOptions: VisibilityOption<'public' | 'unlisted' | 'private'
   },
 ];
 
+const MAX_AVATAR_SIZE = 2 * 1024 * 1024; // 2MB
+
 export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) {
   const { showToast } = useToast();
   const [profileOpen, setProfileOpen] = useState(false);
@@ -100,8 +102,12 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
     setAvatarError(null);
   }, [profileOpen, loaded, profile]);
 
-  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
     onSearchChange(event.target.value);
+  };
+
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
   };
 
   const handleAvatarChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -109,7 +115,7 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
     event.target.value = '';
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
+    if (file.size > MAX_AVATAR_SIZE) {
       setAvatarError('Choose an image under 2MB for the best performance.');
       return;
     }
@@ -215,15 +221,17 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
             </button>
           </div>
         </div>
-        <div className="flex flex-1 items-center gap-4">
+        <form onSubmit={handleSearchSubmit} className="flex flex-1 items-center gap-4">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={searchValue}
-              onChange={handleChange}
+              onChange={handleSearchChange}
               placeholder="Search albums"
               className="h-11 rounded-2xl border-border pl-10"
               aria-label="Search albums"
+              autoComplete="off"
+              spellCheck={false}
             />
           </div>
           <div className="hidden items-center gap-2 md:flex">
@@ -236,175 +244,183 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
               {avatarNode}
             </button>
           </div>
-        </div>
+        </form>
       </div>
 
       <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
+        <DialogContent className="w-[min(100vw-2rem,36rem)] rounded-3xl p-0 sm:p-6">
+          <DialogHeader className="px-6 pt-6 sm:px-0 sm:pt-0">
             <DialogTitle>Profile & defaults</DialogTitle>
             <DialogDescription>
               Personalize your profile photo, bio, and default album visibility before sharing to WhatsApp.
             </DialogDescription>
           </DialogHeader>
 
-          {!loaded ? (
-            <div className="space-y-4">
-              <div className="flex items-center gap-4">
-                <Skeleton className="h-20 w-20 rounded-full" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-2/3" />
-                  <Skeleton className="h-3 w-1/2" />
-                </div>
-              </div>
-              <Skeleton className="h-10 w-full rounded-2xl" />
-              <Skeleton className="h-24 w-full rounded-2xl" />
-            </div>
-          ) : (
-            <form onSubmit={handleProfileSubmit} className="space-y-6">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                <div className="relative h-20 w-20 overflow-hidden rounded-full border border-dashed border-border">
-                  {avatarPreview ? (
-                    <img src={avatarPreview} alt="Profile avatar preview" className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-muted text-lg font-semibold text-muted-foreground">
-                      {initials}
-                    </div>
-                  )}
-                  {avatarLoading ? (
-                    <div className="absolute inset-0 flex items-center justify-center rounded-full bg-background/80">
-                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden />
-                    </div>
-                  ) : null}
-                </div>
-                <div className="flex-1 space-y-2">
-                  <div className="space-y-1">
-                    <p className="text-sm font-semibold text-foreground">Profile photo</p>
-                    <p className="text-xs text-muted-foreground">
-                      Upload a square image (PNG, JPG, WEBP) under 2MB for the best sharing preview.
-                    </p>
+          <div className="space-y-6 px-6 pb-6 sm:px-0">
+            {!loaded ? (
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <Skeleton className="h-20 w-20 rounded-full" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-2/3" />
+                    <Skeleton className="h-3 w-1/2" />
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp"
-                      className="sr-only"
-                      onChange={handleAvatarChange}
-                    />
-                    <Button type="button" className="rounded-2xl gap-2" variant="outline" onClick={handleAvatarPick}>
-                      <Camera className="h-4 w-4" aria-hidden />
-                      Upload photo
-                    </Button>
+                </div>
+                <Skeleton className="h-10 w-full rounded-2xl" />
+                <Skeleton className="h-24 w-full rounded-2xl" />
+              </div>
+            ) : (
+              <form onSubmit={handleProfileSubmit} className="space-y-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                  <div className="relative h-20 w-20 overflow-hidden rounded-full border border-dashed border-border">
                     {avatarPreview ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="rounded-2xl text-destructive hover:text-destructive"
-                        onClick={handleAvatarRemove}
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" aria-hidden />
-                        Remove
-                      </Button>
+                      <img src={avatarPreview} alt="Profile avatar preview" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-muted text-lg font-semibold text-muted-foreground">
+                        {initials}
+                      </div>
+                    )}
+                    {avatarLoading ? (
+                      <div className="absolute inset-0 flex items-center justify-center rounded-full bg-background/80">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden />
+                      </div>
                     ) : null}
                   </div>
-                  {avatarError ? <p className="text-xs text-destructive">{avatarError}</p> : null}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="profile-name" className="text-sm font-semibold text-foreground">
-                  Display name
-                </label>
-                <Input
-                  id="profile-name"
-                  value={draftName}
-                  onChange={(event) => setDraftName(event.target.value)}
-                  placeholder="Your name"
-                  className="rounded-2xl"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="profile-bio" className="text-sm font-semibold text-foreground">
-                  Bio
-                </label>
-                <Textarea
-                  id="profile-bio"
-                  value={draftBio}
-                  onChange={(event) => setDraftBio(event.target.value)}
-                  placeholder="Tell collaborators about this sticker collection."
-                  className="min-h-[120px] rounded-2xl"
-                />
-              </div>
-
-              <div className="space-y-3">
-                <span className="text-sm font-semibold text-foreground">Profile visibility</span>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {profileVisibilityOptions.map((option) => {
-                    const active = draftVisibility === option.value;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setDraftVisibility(option.value)}
-                        className={cn(
-                          'flex flex-col gap-1 rounded-2xl border border-border/70 p-3 text-left transition hover:border-border',
-                          active && 'border-primary/60 bg-primary/10 text-primary',
-                        )}
+                  <div className="flex-1 space-y-2">
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-foreground">Profile photo</p>
+                      <p className="text-xs text-muted-foreground">
+                        Upload a square image (PNG, JPG, WEBP) under 2MB for the best sharing preview.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="sr-only"
+                        onChange={handleAvatarChange}
+                      />
+                      <Button type="button" className="rounded-2xl gap-2" variant="outline" onClick={handleAvatarPick}
+                        aria-label="Upload a new profile photo"
                       >
-                        <span className="flex items-center gap-2 text-sm font-semibold">
-                          {option.icon}
-                          {option.label}
-                        </span>
-                        <span className="text-xs text-muted-foreground">{option.description}</span>
-                      </button>
-                    );
-                  })}
+                        <Camera className="h-4 w-4" aria-hidden />
+                        Upload photo
+                      </Button>
+                      {avatarPreview ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="rounded-2xl text-destructive hover:text-destructive"
+                          onClick={handleAvatarRemove}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" aria-hidden />
+                          Remove
+                        </Button>
+                      ) : null}
+                    </div>
+                    {avatarError ? <p className="text-xs text-destructive">{avatarError}</p> : null}
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-3">
-                <span className="text-sm font-semibold text-foreground">Default album visibility</span>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {albumVisibilityOptions.map((option) => {
-                    const active = draftAlbumVisibility === option.value;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setDraftAlbumVisibility(option.value)}
-                        className={cn(
-                          'flex flex-col gap-1 rounded-2xl border border-border/70 p-3 text-left transition hover:border-border',
-                          active && 'border-primary/60 bg-primary/10 text-primary',
-                        )}
-                      >
-                        <span className="flex items-center gap-2 text-sm font-semibold">
-                          {option.icon}
-                          {option.label}
-                        </span>
-                        <span className="text-xs text-muted-foreground">{option.description}</span>
-                      </button>
-                    );
-                  })}
+                <div className="space-y-2">
+                  <label htmlFor="profile-name" className="text-sm font-semibold text-foreground">
+                    Display name
+                  </label>
+                  <Input
+                    id="profile-name"
+                    value={draftName}
+                    onChange={(event) => setDraftName(event.target.value)}
+                    placeholder="Your name"
+                    className="rounded-2xl"
+                  />
                 </div>
-              </div>
 
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <Button type="button" variant="ghost" className="rounded-2xl text-sm" onClick={handleResetProfile}>
-                  Reset to defaults
-                </Button>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button type="button" variant="ghost" className="rounded-2xl" onClick={() => setProfileOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" className="rounded-2xl">
-                    Save changes
-                  </Button>
+                <div className="space-y-2">
+                  <label htmlFor="profile-bio" className="text-sm font-semibold text-foreground">
+                    Bio
+                  </label>
+                  <Textarea
+                    id="profile-bio"
+                    value={draftBio}
+                    onChange={(event) => setDraftBio(event.target.value)}
+                    placeholder="Tell collaborators about this sticker collection."
+                    className="min-h-[120px] rounded-2xl"
+                  />
                 </div>
-              </div>
-            </form>
-          )}
+
+                <div className="space-y-3">
+                  <span className="text-sm font-semibold text-foreground">Profile visibility</span>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {profileVisibilityOptions.map((option) => {
+                      const active = draftVisibility === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setDraftVisibility(option.value)}
+                          className={cn(
+                            'flex flex-col gap-1 rounded-2xl border border-border/70 p-3 text-left transition hover:border-border',
+                            active && 'border-primary/60 bg-primary/10 text-primary',
+                          )}
+                          aria-pressed={active}
+                          aria-label={`Set profile visibility to ${option.label}`}
+                        >
+                          <span className="flex items-center gap-2 text-sm font-semibold">
+                            {option.icon}
+                            {option.label}
+                          </span>
+                          <span className="text-xs text-muted-foreground">{option.description}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <span className="text-sm font-semibold text-foreground">Default album visibility</span>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {albumVisibilityOptions.map((option) => {
+                      const active = draftAlbumVisibility === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setDraftAlbumVisibility(option.value)}
+                          className={cn(
+                            'flex flex-col gap-1 rounded-2xl border border-border/70 p-3 text-left transition hover:border-border',
+                            active && 'border-primary/60 bg-primary/10 text-primary',
+                          )}
+                          aria-pressed={active}
+                          aria-label={`Set default album visibility to ${option.label}`}
+                        >
+                          <span className="flex items-center gap-2 text-sm font-semibold">
+                            {option.icon}
+                            {option.label}
+                          </span>
+                          <span className="text-xs text-muted-foreground">{option.description}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <Button type="button" variant="ghost" className="rounded-2xl text-sm" onClick={handleResetProfile}>
+                    Reset to defaults
+                  </Button>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Button type="button" variant="ghost" className="rounded-2xl" onClick={() => setProfileOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" className="rounded-2xl">
+                      Save changes
+                    </Button>
+                  </div>
+                </div>
+              </form>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </header>
