@@ -51,6 +51,23 @@ const responseSchema = z.object({
     .default([]),
 });
 
+function parseAlbumPayload(payload: unknown): AlbumListItem[] | null {
+  const parsed = responseSchema.safeParse(payload);
+  if (!parsed.success) {
+    return null;
+  }
+
+  return parsed.data.data.map((album) => ({
+    id: album.id,
+    name: album.name,
+    slug: album.slug,
+    visibility: album.visibility,
+    updatedAt: album.updatedAt,
+    stickersCount: album.stickersCount,
+    thumbnails: Array.isArray(album.thumbnails) ? album.thumbnails : [],
+  }));
+}
+
 const updatePayloadSchema = z.object({
   name: z.string().min(1).max(120).optional(),
   visibility: z.union([z.literal('public'), z.literal('unlisted'), z.literal('private')]).optional(),
@@ -93,11 +110,20 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
         cache: 'no-store',
       });
 
-      let payload: unknown;
+      let payload: unknown = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
 
       if (!response.ok) {
+        const fallback = parseAlbumPayload(payload);
+        if (fallback) {
+          return fallback;
+        }
+
         let message = 'Failed to load albums';
-        payload = await response.json().catch(() => null);
         if (payload && typeof payload === 'object') {
           const body = payload as { error?: string; message?: string };
           const detail = body.error ?? body.message;
@@ -109,21 +135,12 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
         throw new Error(message);
       }
 
-      payload = await response.json();
-      const parsed = responseSchema.safeParse(payload);
-      if (!parsed.success) {
+      const albums = parseAlbumPayload(payload);
+      if (!albums) {
         throw new Error('Invalid response from server');
       }
 
-      return parsed.data.data.map((album) => ({
-        id: album.id,
-        name: album.name,
-        slug: album.slug,
-        visibility: album.visibility,
-        updatedAt: album.updatedAt,
-        stickersCount: album.stickersCount,
-        thumbnails: album.thumbnails ?? [],
-      }));
+      return albums;
     },
   });
 

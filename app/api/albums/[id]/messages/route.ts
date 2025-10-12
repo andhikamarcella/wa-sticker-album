@@ -12,7 +12,7 @@ import {
 import { getServerClient, type SupabaseServerClient } from '@/lib/supabaseServer';
 import { SupabaseSchemaMissingError, shouldUseMockFromSupabaseError } from '@/lib/utils';
 
-const MOCK_USER_ID = 'local-user';
+const MOCK_USER_ID = 'demo-owner';
 const DEFAULT_DISPLAY_NAME = 'Sticker Fan';
 const MAX_LIMIT = 200;
 

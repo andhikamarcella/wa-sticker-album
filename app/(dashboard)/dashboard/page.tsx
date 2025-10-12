@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation';
 import type { User } from '@supabase/supabase-js';
 
 import Providers from '@/components/Providers';
@@ -38,17 +37,30 @@ export default async function DashboardPage() {
     );
   }
 
-  const { user } = await getServerUser();
+  try {
+    const { user } = await getServerUser();
 
-  if (!user) {
-    redirect('/login');
+    if (!user) {
+      return (
+        <Providers>
+          <DashboardShell userLabel={null} />
+        </Providers>
+      );
+    }
+
+    const displayLabel = resolveUserLabel(user);
+
+    return (
+      <Providers>
+        <DashboardShell userLabel={displayLabel} />
+      </Providers>
+    );
+  } catch (error) {
+    console.warn('Falling back to mock dashboard due to Supabase error', error);
+    return (
+      <Providers>
+        <DashboardShell userLabel={null} />
+      </Providers>
+    );
   }
-
-  const displayLabel = resolveUserLabel(user);
-
-  return (
-    <Providers>
-      <DashboardShell userLabel={displayLabel} />
-    </Providers>
-  );
 }

@@ -15,7 +15,7 @@ import { slugify } from '@/lib/slug';
 import { SupabaseSchemaMissingError, shouldUseMockFromSupabaseError } from '@/lib/utils';
 
 const DEFAULT_SCOPE = 'all' as const;
-const MOCK_OWNER_ID = 'local-user';
+const MOCK_OWNER_ID = 'demo-owner';
 
 const scopeSchema = z.enum(['all', 'owned', 'shared']);
 const visibilitySchema = z.enum(['public', 'unlisted', 'private']);
