@@ -97,17 +97,21 @@ export function ShareButtons({ publicUrl, waUrl }: ShareButtonsProps) {
           className="h-11 rounded-2xl border-muted bg-muted/40 font-mono text-xs text-muted-foreground sm:text-sm"
         />
       </div>
-      <div className="flex flex-shrink-0 items-center gap-2">
+      <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
         <Button
           type="button"
           variant={copied ? 'secondary' : 'outline'}
           onClick={handleCopy}
-          className="h-11 rounded-full px-5"
+          className="h-11 w-full rounded-full px-5 sm:w-auto sm:min-w-[140px]"
         >
           <Copy className="mr-2 h-4 w-4" aria-hidden />
           {copied ? 'Copied' : 'Copy link'}
         </Button>
-        <Button type="button" onClick={handleWhatsAppShare} className="h-11 rounded-full px-5">
+        <Button
+          type="button"
+          onClick={handleWhatsAppShare}
+          className="h-11 w-full rounded-full px-5 sm:w-auto sm:min-w-[140px]"
+        >
           <MessageCircle className="mr-2 h-4 w-4" aria-hidden />
           WhatsApp
         </Button>

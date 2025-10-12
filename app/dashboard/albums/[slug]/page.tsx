@@ -9,50 +9,96 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { getServerClient } from '@/lib/supabaseServer';
 import { slugify } from '@/lib/slug';
+import { isSupabaseConfigured, resolveAppUrl } from '@/lib/env';
+import { mockFindAlbumBySlug, mockUpdateAlbum } from '@/lib/mockDb';
 
 import type { Database } from '@/types/database';
 
 type AlbumRow = Database['public']['Tables']['albums']['Row'];
 type AlbumUpdate = Database['public']['Tables']['albums']['Update'];
 
+type AlbumSummary = {
+  id: string;
+  name: string;
+  slug: string;
+  visibility: AlbumRow['visibility'];
+};
+
 type AlbumPageProps = {
   params: { slug: string };
 };
 
 export default async function AlbumPage({ params }: AlbumPageProps) {
-  const supabase = getServerClient();
+  const supabaseConfigured = isSupabaseConfigured();
+  let albumRow: AlbumSummary & { created_at?: string | null; updated_at?: string | null };
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  if (supabaseConfigured) {
+    const supabase = getServerClient();
 
-  const { data: album, error } = await supabase
-    .from('albums')
-    .select('*')
-    .eq('slug', params.slug)
-    .maybeSingle<AlbumRow>();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) redirect('/login');
 
-  if (error) {
-    if (error.code === 'PGRST116' || error.code === '42501') {
+    const { data: album, error } = await supabase
+      .from('albums')
+      .select('*')
+      .eq('slug', params.slug)
+      .maybeSingle<AlbumRow>();
+
+    if (error) {
+      if (error.code === 'PGRST116' || error.code === '42501') {
+        notFound();
+      }
+
+      throw error;
+    }
+
+    if (!album) {
       notFound();
     }
 
-    throw error;
+    albumRow = album;
+  } else {
+    const album = mockFindAlbumBySlug(params.slug);
+    if (!album) {
+      notFound();
+    }
+
+    albumRow = {
+      id: album.id,
+      name: album.name,
+      slug: album.slug,
+      visibility: album.visibility,
+      created_at: album.createdAt,
+      updated_at: album.updatedAt,
+    };
   }
 
-  if (!album) {
-    notFound();
-  }
-
-  const albumRow: AlbumRow = album;
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+  const baseUrl = resolveAppUrl().replace(/\/$/, '');
   const publicUrl = `${baseUrl}/albums/${albumRow.slug}`;
 
   async function updateAlbum(formData: FormData) {
     'use server';
     const name = formData.get('name')?.toString().trim();
     const visibility = (formData.get('visibility')?.toString() ?? albumRow.visibility) as AlbumRow['visibility'];
+
+    if (!isSupabaseConfigured()) {
+      const nextName = name && name.length ? name : albumRow.name;
+      const updates: Partial<{ name: string; visibility: AlbumRow['visibility'] }> = {};
+      if (nextName !== albumRow.name) {
+        updates.name = nextName;
+      }
+      if (visibility && visibility !== albumRow.visibility) {
+        updates.visibility = visibility;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        mockUpdateAlbum(albumRow.id, updates);
+      }
+
+      return;
+    }
 
     const payload: AlbumUpdate = {
       name: name && name.length ? name : albumRow.name,

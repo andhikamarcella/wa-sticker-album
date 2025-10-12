@@ -160,10 +160,6 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
 async function ensureUniqueSlug(client: SupabaseClient<any>, baseSlug: string, currentId?: string) {
   let candidate = baseSlug;
   let suffix = 1;
-
-  // cari slug unik; jika slug sama milik album saat ini, biarkan
-  // PGRST116 = no rows
-  // PGRST302 = permission issue (seharusnya tidak terjadi di SELECT public)
   while (true) {
     const { data, error } = await client
       .from('albums')
@@ -171,12 +167,8 @@ async function ensureUniqueSlug(client: SupabaseClient<any>, baseSlug: string, c
       .eq('slug', candidate)
       .limit(1)
       .maybeSingle();
-
-    if (error && error.code !== 'PGRST116') {
-      throw new Error(error.message);
-    }
+    if (error && error.code !== 'PGRST116') throw new Error(error.message);
     if (!data || data.id === currentId) return candidate;
-
     candidate = `${baseSlug}-${suffix++}`;
   }
 }

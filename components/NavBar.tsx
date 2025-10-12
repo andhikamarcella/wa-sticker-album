@@ -1,6 +1,6 @@
 'use client';
 
-import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, Globe2, Link2, Loader2, Lock, Search, Trash2 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -76,10 +76,7 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
 
   const initials = useMemo(() => {
     const source = displayName ?? userLabel?.trim();
-    if (!source || source.length === 0) {
-      return '?';
-    }
-
+    if (!source || source.length === 0) return '?';
     const [firstWord] = source.split(/\s+/);
     return firstWord?.charAt(0)?.toUpperCase() || '?';
   }, [displayName, userLabel]);
@@ -91,12 +88,10 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
   const [draftAvatar, setDraftAvatar] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [avatarLoading, setAvatarLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (!profileOpen || !loaded) {
-      return;
-    }
-
+    if (!profileOpen || !loaded) return;
     setDraftName(profile.displayName);
     setDraftBio(profile.bio);
     setDraftVisibility(profile.visibility);
@@ -112,9 +107,7 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
   const handleAvatarChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
-    if (!file) {
-      return;
-    }
+    if (!file) return;
 
     if (file.size > 2 * 1024 * 1024) {
       setAvatarError('Choose an image under 2MB for the best performance.');
@@ -127,9 +120,7 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result;
-      if (typeof result === 'string') {
-        setDraftAvatar(result);
-      }
+      if (typeof result === 'string') setDraftAvatar(result);
       setAvatarLoading(false);
     };
     reader.onerror = () => {
@@ -144,11 +135,13 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
     setAvatarError(null);
   };
 
+  const handleAvatarPick = () => {
+    fileInputRef.current?.click();
+  };
+
   const handleProfileSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!loaded) {
-      return;
-    }
+    if (!loaded) return;
 
     const trimmedName = draftName.trim();
     const fallbackName = displayName ?? userLabel?.trim() ?? 'Sticker Fan';
@@ -292,13 +285,17 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <label className="inline-flex">
-                      <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleAvatarChange} />
-                      <Button type="button" className="rounded-2xl gap-2" variant="outline">
-                        <Camera className="h-4 w-4" aria-hidden />
-                        Upload photo
-                      </Button>
-                    </label>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="sr-only"
+                      onChange={handleAvatarChange}
+                    />
+                    <Button type="button" className="rounded-2xl gap-2" variant="outline" onClick={handleAvatarPick}>
+                      <Camera className="h-4 w-4" aria-hidden />
+                      Upload photo
+                    </Button>
                     {avatarPreview ? (
                       <Button
                         type="button"
@@ -398,12 +395,7 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
                   Reset to defaults
                 </Button>
                 <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="rounded-2xl"
-                    onClick={() => setProfileOpen(false)}
-                  >
+                  <Button type="button" variant="ghost" className="rounded-2xl" onClick={() => setProfileOpen(false)}>
                     Cancel
                   </Button>
                   <Button type="submit" className="rounded-2xl">

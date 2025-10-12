@@ -54,6 +54,10 @@ export function PackBuilder({ albumId }: PackBuilderProps) {
   const [lastPack, setLastPack] = useState<CreatePackResponse | null>(null);
   const [shareInfo, setShareInfo] = useState<PublishResponse | null>(null);
 
+  const latestZipUrl = lastPack?.exported_zip_url ?? null;
+  const isDataZip = latestZipUrl?.startsWith('data:') ?? false;
+  const downloadFileName = isDataZip ? 'sticker-pack.zip' : undefined;
+
   const {
     data,
     isLoading,
@@ -263,11 +267,12 @@ export function PackBuilder({ albumId }: PackBuilderProps) {
               {packMutation.isPending ? 'Menyiapkan ZIP…' : 'Buat & Export ZIP'}
             </Button>
 
-            {lastPack?.exported_zip_url ? (
+            {latestZipUrl ? (
               <a
-                href={lastPack.exported_zip_url}
-                target="_blank"
-                rel="noreferrer"
+                href={latestZipUrl}
+                target={isDataZip ? '_self' : '_blank'}
+                rel={isDataZip ? undefined : 'noreferrer'}
+                download={downloadFileName}
                 className="block text-center text-sm font-medium text-primary underline"
               >
                 Unduh ZIP terbaru

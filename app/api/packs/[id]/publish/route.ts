@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getServerClient, type SupabaseServerClient } from '@/lib/supabaseServer';
+import { isSupabaseConfigured, resolveAppUrl } from '@/lib/env';
+import { mockGetAlbum, mockGetPack, mockPublishPack } from '@/lib/mockDb';
 
 type PackRow = {
   id: string;
@@ -91,6 +93,29 @@ async function touchAlbum(supabase: SupabaseServerClient, albumId: string) {
 }
 
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+  if (!isSupabaseConfigured()) {
+    const pack = mockGetPack(params.id);
+    if (!pack) {
+      return NextResponse.json({ error: 'Pack tidak ditemukan' }, { status: 404 });
+    }
+
+    const album = mockGetAlbum(pack.albumId);
+    if (!album) {
+      return NextResponse.json({ error: 'Album tidak ditemukan' }, { status: 404 });
+    }
+
+    const baseUrl = resolveAppUrl().replace(/\/$/, '');
+    const publicUrl = `${baseUrl}/p/${album.slug}`;
+    const waUrl = `https://wa.me/?text=${encodeURIComponent(publicUrl)}`;
+    const updated = mockPublishPack(pack.id, publicUrl, waUrl);
+
+    if (!updated) {
+      return NextResponse.json({ error: 'Gagal memperbarui pack' }, { status: 500 });
+    }
+
+    return NextResponse.json({ publicUrl: updated.publicUrl ?? publicUrl, waUrl: updated.waShareUrl ?? waUrl });
+  }
+
   const supabase = getServerClient();
 
   const {
