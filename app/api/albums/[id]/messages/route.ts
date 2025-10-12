@@ -78,7 +78,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const album = mockGetAlbum(albumId);
     if (!album) return NextResponse.json({ error: 'Album tidak ditemukan' }, { status: 404 });
     const message = mockCreateMessage({
-      albumId, userId: MOCK_USER_ID, displayName: headerDisplayName ?? DEFAULT_DISPLAY_NAME, body,
+      albumId,
+      userId: MOCK_USER_ID,
+      displayName: headerDisplayName ?? DEFAULT_DISPLAY_NAME,
+      body,
     });
     return NextResponse.json(mapMockMessageToResponse(message));
   }
@@ -109,7 +112,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       const album = mockGetAlbum(albumId);
       if (!album) return NextResponse.json({ error: 'Album tidak ditemukan' }, { status: 404 });
       const message = mockCreateMessage({
-        albumId, userId: MOCK_USER_ID, displayName: headerDisplayName ?? DEFAULT_DISPLAY_NAME, body,
+        albumId,
+        userId: MOCK_USER_ID,
+        displayName: headerDisplayName ?? DEFAULT_DISPLAY_NAME,
+        body,
       });
       return NextResponse.json(mapMockMessageToResponse(message));
     }

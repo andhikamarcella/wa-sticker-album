@@ -56,30 +56,10 @@ interface MessageRow {
 }
 
 interface PublicAlbumData {
-  album: {
-    id: string;
-    name: string;
-    slug: string;
-    visibility: AlbumVisibility;
-  };
-  stickers: Array<{
-    id: string;
-    fileUrl: string;
-    thumbUrl: string | null;
-    title: string | null;
-  }>;
-  latestPack: {
-    id: string;
-    exportedZipUrl: string | null;
-    publicUrl: string | null;
-    waShareUrl: string | null;
-  } | null;
-  messages: Array<{
-    id: string;
-    displayName: string | null;
-    body: string;
-    createdAt: string | null;
-  }>;
+  album: { id: string; name: string; slug: string; visibility: AlbumVisibility };
+  stickers: Array<{ id: string; fileUrl: string; thumbUrl: string | null; title: string | null }>;
+  latestPack: { id: string; exportedZipUrl: string | null; publicUrl: string | null; waShareUrl: string | null } | null;
+  messages: Array<{ id: string; displayName: string | null; body: string; createdAt: string | null }>;
   visibility: AlbumVisibility;
 }
 
@@ -95,13 +75,11 @@ async function fetchAlbumForMetadata(slug: string): Promise<{ name: string; visi
     .from('albums')
     .select('id, name, slug, visibility')
     .eq('slug', slug)
-    .maybeSingle<Pick<AlbumRow, 'id' | 'name' | 'slug' | 'visibility'>>();
+    .maybeSingle<Pick(AlbumRow, 'id' | 'name' | 'slug' | 'visibility')>();
 
   if (error) {
     if (error.code === 'PGRST116' || error.code === '42501') return null;
-    if (shouldUseMockFromSupabaseError(error)) {
-      throw new SupabaseSchemaMissingError(error.message);
-    }
+    if (shouldUseMockFromSupabaseError(error)) throw new SupabaseSchemaMissingError(error.message);
     throw error;
   }
 
@@ -125,30 +103,21 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     }
   }
 
-  if (!album) {
-    return { title: 'Album tidak ditemukan · WA Sticker Album', robots: { index: false, follow: false } };
-  }
+  if (!album) return { title: 'Album tidak ditemukan · WA Sticker Album', robots: { index: false, follow: false } };
 
   return {
     title: `${album.name} · WA Sticker Album`,
     robots: album.visibility === 'unlisted' ? { index: false, follow: true } : undefined,
-    alternates: {
-      canonical: `${resolveAppUrl().replace(/\/$/, '')}/albums/${params.slug}`,
-    },
+    alternates: { canonical: `${resolveAppUrl().replace(/\/$/, '')}/albums/${params.slug}` },
   } satisfies Metadata;
 }
 
 export default async function AlbumPage({ params }: { params: { slug: string } }) {
-  if (!isSupabaseConfigured()) {
-    return renderMockAlbum(params.slug);
-  }
+  if (!isSupabaseConfigured()) return renderMockAlbum(params.slug);
 
   try {
     const supabase = getServerClient();
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError) throw userError;
 
     const { data: album, error: albumError } = await supabase
@@ -179,15 +148,11 @@ export default async function AlbumPage({ params }: { params: { slug: string } }
         .eq('album_id', album.id);
 
       if (collaboratorError) {
-        if (shouldUseMockFromSupabaseError(collaboratorError)) {
-          throw new SupabaseSchemaMissingError(collaboratorError.message);
-        }
+        if (shouldUseMockFromSupabaseError(collaboratorError)) throw new SupabaseSchemaMissingError(collaboratorError.message);
         throw collaboratorError;
       }
 
-      for (const row of (collaboratorRows as CollaboratorRow[] | null) ?? []) {
-        collaboratorIds.add(row.user_id);
-      }
+      for (const row of (collaboratorRows as CollaboratorRow[] | null) ?? []) collaboratorIds.add(row.user_id);
 
       isOwner = album.owner_id === user.id;
       canEdit = isOwner || collaboratorIds.has(user.id);
@@ -207,9 +172,7 @@ export default async function AlbumPage({ params }: { params: { slug: string } }
             throw profileError;
           }
 
-          profileMap = new Map<string, ProfileRow>(
-            ((profileRows as ProfileRow[] | null) ?? []).map((row) => [row.id, row]),
-          );
+          profileMap = new Map<string, ProfileRow>(((profileRows as ProfileRow[] | null) ?? []).map((row) => [row.id, row]));
         }
 
         collaborators = [
@@ -224,12 +187,7 @@ export default async function AlbumPage({ params }: { params: { slug: string } }
         for (const collaboratorId of collaboratorIds) {
           if (collaboratorId === album.owner_id) continue;
           const profile = profileMap.get(collaboratorId);
-          collaborators.push({
-            id: collaboratorId,
-            name: profile?.name ?? collaboratorId,
-            role: 'collaborator',
-            email: undefined,
-          });
+          collaborators.push({ id: collaboratorId, name: profile?.name ?? collaboratorId, role: 'collaborator', email: undefined });
         }
 
         return (
@@ -267,10 +225,7 @@ async function renderMockAlbum(slug: string) {
   if (!album || album.visibility === 'private') notFound();
 
   const baseUrl = resolveAppUrl().replace(/\/$/, '');
-
-  const collaborators: AlbumCollaborator[] = [
-    { id: album.ownerId, name: 'Demo Owner', role: 'owner', email: 'demo@example.com' },
-  ];
+  const collaborators: AlbumCollaborator[] = [{ id: album.ownerId, name: 'Demo Owner', role: 'owner', email: 'demo@example.com' }];
 
   return (
     <Providers>
@@ -310,9 +265,7 @@ function PublicAlbumView({ data }: { data: PublicAlbumData }) {
           <div className="flex flex-col gap-3 rounded-2xl bg-emerald-500/10 p-4 text-emerald-900 dark:text-emerald-100 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-wide">Sticker pack tersedia</p>
-              <p className="text-sm text-emerald-900/80 dark:text-emerald-50/80">
-                Bagikan pack ini ke WhatsApp atau unduh file ZIP-nya.
-              </p>
+              <p className="text-sm text-emerald-900/80 dark:text-emerald-50/80">Bagikan pack ini ke WhatsApp atau unduh file ZIP-nya.</p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <a
@@ -399,10 +352,9 @@ function PublicAlbumView({ data }: { data: PublicAlbumData }) {
 function VisibilityBadge({ visibility }: { visibility: AlbumVisibility }) {
   const config: Record<AlbumVisibility, { label: string; className: string }> = {
     public: { label: 'Public', className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
-    unlisted:{ label: 'Unlisted', className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' },
+    unlisted: { label: 'Unlisted', className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' },
     private: { label: 'Private', className: 'bg-slate-500/10 text-slate-600 dark:text-slate-400' },
   };
-
   const badge = config[visibility];
   return (
     <span className={cn('inline-flex items-center rounded-full border border-transparent px-3 py-1 text-sm font-medium', badge.className)}>
@@ -411,10 +363,7 @@ function VisibilityBadge({ visibility }: { visibility: AlbumVisibility }) {
   );
 }
 
-async function loadSupabasePublicAlbum(
-  supabase: SupabaseServerClient,
-  album: AlbumRow,
-): Promise<PublicAlbumData> {
+async function loadSupabasePublicAlbum(supabase: SupabaseServerClient, album: AlbumRow): Promise<PublicAlbumData> {
   const { data: stickerRows, error: stickerError } = await supabase
     .from('stickers')
     .select('id, file_url, thumb_url, title')
@@ -482,7 +431,6 @@ function selectLatestPack(rows: PackRow[]): PublicAlbumData['latestPack'] {
     const bTime = new Date(b.updated_at ?? b.created_at ?? 0).getTime();
     return bTime - aTime;
   });
-
   const pack = sorted[0];
   return {
     id: pack.id,

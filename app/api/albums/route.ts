@@ -258,7 +258,7 @@ async function generateUniqueSlug(client: SupabaseClient<any>, base: string) {
 async function insertAlbum(
   client: SupabaseClient<any>,
   payload: { owner_id: string; name: string; visibility: AlbumVisibility; slug: string },
-): Promise<AlbumRow> {
+) {
   const now = new Date().toISOString();
   const { data, error, status } = await client
     .from('albums')
