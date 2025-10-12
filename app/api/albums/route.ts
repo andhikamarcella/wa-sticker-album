@@ -125,12 +125,20 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json<{ data: AlbumListItem[] }>({ data: items });
   } catch (error) {
+    const fallback = buildMockAlbumItems(scope, searchQuery);
+
     if (error instanceof SupabaseSchemaMissingError || shouldUseMockFromSupabaseError(error)) {
-      return NextResponse.json<{ data: AlbumListItem[] }>({ data: buildMockAlbumItems(scope, searchQuery) });
+      return NextResponse.json<{ data: AlbumListItem[] }>({ data: fallback });
     }
 
     console.error('Failed to list albums', error);
-    return NextResponse.json({ error: 'Failed to list albums' }, { status: 500 });
+    return NextResponse.json<{ data: AlbumListItem[]; warning?: string }>(
+      {
+        data: fallback,
+        warning: 'Album list served from mock data due to server error.',
+      },
+      { status: 200 },
+    );
   }
 }
 
