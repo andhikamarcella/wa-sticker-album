@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { type FormEvent, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 
@@ -11,12 +11,12 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/useToast';
+import { resolveAppUrl } from '@/lib/env';
 import { cn } from '@/lib/utils';
+import { buildWaMessage, buildWaUrl } from '@/lib/whatsapp';
 
 import { CreateAlbumDialog } from '@/components/CreateAlbumDialog';
 import { ShareButtons } from '@/components/ShareButtons';
-import { resolveAppUrl } from '@/lib/env';
-import { buildWaMessage, buildWaUrl } from '@/lib/whatsapp';
 
 export type AlbumScope = 'all' | 'owned' | 'shared';
 
@@ -50,6 +50,23 @@ const responseSchema = z.object({
     )
     .default([]),
 });
+
+function parseAlbumPayload(payload: unknown): AlbumListItem[] | null {
+  const parsed = responseSchema.safeParse(payload);
+  if (!parsed.success) {
+    return null;
+  }
+
+  return parsed.data.data.map((album) => ({
+    id: album.id,
+    name: album.name,
+    slug: album.slug,
+    visibility: album.visibility,
+    updatedAt: album.updatedAt,
+    stickersCount: album.stickersCount,
+    thumbnails: Array.isArray(album.thumbnails) ? album.thumbnails : [],
+  }));
+}
 
 const updatePayloadSchema = z.object({
   name: z.string().min(1).max(120).optional(),
@@ -93,11 +110,20 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
         cache: 'no-store',
       });
 
-      let payload: unknown;
+      let payload: unknown = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
 
       if (!response.ok) {
+        const fallback = parseAlbumPayload(payload);
+        if (fallback) {
+          return fallback;
+        }
+
         let message = 'Failed to load albums';
-        payload = await response.json().catch(() => null);
         if (payload && typeof payload === 'object') {
           const body = payload as { error?: string; message?: string };
           const detail = body.error ?? body.message;
@@ -109,21 +135,12 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
         throw new Error(message);
       }
 
-      payload = await response.json();
-      const parsed = responseSchema.safeParse(payload);
-      if (!parsed.success) {
+      const albums = parseAlbumPayload(payload);
+      if (!albums) {
         throw new Error('Invalid response from server');
       }
 
-      return parsed.data.data.map((album) => ({
-        id: album.id,
-        name: album.name,
-        slug: album.slug,
-        visibility: album.visibility,
-        updatedAt: album.updatedAt,
-        stickersCount: album.stickersCount,
-        thumbnails: album.thumbnails ?? [],
-      }));
+      return albums;
     },
   });
 
@@ -152,10 +169,10 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
         variant: 'success',
       });
     },
-    onError: (error: Error) => {
+    onError: (mutationError: Error) => {
       showToast({
         title: 'Unable to update album',
-        description: error.message,
+        description: mutationError.message,
         variant: 'destructive',
       });
     },
@@ -182,10 +199,10 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
         variant: 'success',
       });
     },
-    onError: (error: Error) => {
+    onError: (mutationError: Error) => {
       showToast({
         title: 'Unable to delete album',
-        description: error.message,
+        description: mutationError.message,
         variant: 'destructive',
       });
     },
@@ -221,7 +238,7 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
     setShareTarget(album);
   };
 
-  const handleRenameSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleRenameSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!renameTarget) return;
 
@@ -254,10 +271,16 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
     <section className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <Tabs value={scope} onValueChange={handleScopeChange} className="w-full sm:w-auto">
-          <TabsList className="grid w-full grid-cols-3 rounded-2xl bg-muted/60 p-1">
-            <TabsTrigger value="all" className="rounded-2xl text-sm font-medium">All</TabsTrigger>
-            <TabsTrigger value="owned" className="rounded-2xl text-sm font-medium">Owned</TabsTrigger>
-            <TabsTrigger value="shared" className="rounded-2xl text-sm font-medium">Shared</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3 rounded-2xl bg-muted/60 p-1" aria-label="Album scope filter">
+            <TabsTrigger value="all" className="rounded-2xl text-sm font-medium">
+              All
+            </TabsTrigger>
+            <TabsTrigger value="owned" className="rounded-2xl text-sm font-medium">
+              Owned
+            </TabsTrigger>
+            <TabsTrigger value="shared" className="rounded-2xl text-sm font-medium">
+              Shared
+            </TabsTrigger>
           </TabsList>
         </Tabs>
         <CreateAlbumDialog>
@@ -303,8 +326,8 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
               onRename={handleRenameRequest}
               onShare={handleShareRequest}
               onDelete={handleDeleteRequest}
-          />
-        ))}
+            />
+          ))}
         </div>
       )}
 
@@ -318,7 +341,7 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="rounded-3xl">
           <DialogHeader>
             <DialogTitle>Rename album</DialogTitle>
             <DialogDescription>Update the album name and visibility.</DialogDescription>
@@ -341,20 +364,24 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
             <div className="space-y-2">
               <span className="text-sm font-medium text-foreground">Visibility</span>
               <div className="grid grid-cols-3 gap-2">
-                {visibilityOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setRenameVisibility(option.value)}
-                    className={cn(
-                      'flex items-center justify-center rounded-2xl border border-border/60 px-3 py-2 text-sm transition',
-                      renameVisibility === option.value && 'border-primary/60 bg-primary/10 text-primary',
-                    )}
-                    disabled={updateMutation.isPending}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+                {visibilityOptions.map((option) => {
+                  const isActive = renameVisibility === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setRenameVisibility(option.value)}
+                      className={cn(
+                        'flex items-center justify-center rounded-2xl border border-border/60 px-3 py-2 text-sm transition',
+                        isActive && 'border-primary/60 bg-primary/10 text-primary',
+                      )}
+                      disabled={updateMutation.isPending}
+                      aria-pressed={isActive}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
@@ -368,7 +395,7 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
                 Cancel
               </Button>
               <Button type="submit" className="rounded-2xl" disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? 'Saving...' : 'Save changes'}
+                {updateMutation.isPending ? 'Saving…' : 'Save changes'}
               </Button>
             </div>
           </form>
@@ -383,7 +410,7 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="rounded-3xl">
           <DialogHeader>
             <DialogTitle>Share album to WhatsApp</DialogTitle>
             <DialogDescription>
@@ -402,7 +429,7 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="rounded-3xl">
           <DialogHeader>
             <DialogTitle>Delete album</DialogTitle>
             <DialogDescription>
@@ -431,7 +458,7 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
               onClick={handleDeleteConfirm}
               disabled={deleteMutation.isPending}
             >
-              {deleteMutation.isPending ? 'Deleting...' : 'Delete album'}
+              {deleteMutation.isPending ? 'Deleting…' : 'Delete album'}
             </Button>
           </div>
         </DialogContent>
