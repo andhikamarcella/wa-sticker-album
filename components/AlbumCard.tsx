@@ -129,18 +129,18 @@ export function AlbumCard({
           })}
         </div>
       </Link>
-      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 p-4">
+      <CardHeader className="flex flex-col gap-3 space-y-0 p-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-col gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Link
               href={albumHref}
               prefetch={false}
-              className="truncate text-base font-semibold leading-tight transition hover:text-primary"
+              className="min-w-0 truncate text-base font-semibold leading-tight transition hover:text-primary"
               aria-label={`Open album ${name}`}
             >
               {name}
             </Link>
-            <Badge className={cn('flex items-center gap-1 border-none px-2 py-0.5 text-xs', visibilityProps.badgeClass)}>
+            <Badge className={cn('flex items-center gap-1 whitespace-nowrap border-none px-2 py-0.5 text-xs', visibilityProps.badgeClass)}>
               {visibilityProps.icon}
               {visibilityProps.label}
             </Badge>

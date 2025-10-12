@@ -195,11 +195,11 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
     <header className="w-full px-4 py-4">
       <div
         className={cn(
-          'mx-auto flex w-full max-w-6xl flex-col gap-4 rounded-3xl border border-border bg-card/80 p-4 shadow-sm backdrop-blur-sm transition-colors',
+          'mx-auto flex w-full max-w-6xl flex-col gap-4 rounded-3xl border border-border bg-card/80 p-3 shadow-sm backdrop-blur-sm transition-colors sm:p-4',
           'md:flex-row md:items-center md:justify-between md:gap-6',
         )}
       >
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-col">
             <span className="text-sm font-semibold uppercase tracking-widest text-primary">Sticker Album</span>
             <span className="text-xs text-muted-foreground">Organize and share your WhatsApp stickers</span>
@@ -221,7 +221,10 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
             </button>
           </div>
         </div>
-        <form onSubmit={handleSearchSubmit} className="flex flex-1 items-center gap-4">
+        <form
+          onSubmit={handleSearchSubmit}
+          className="flex w-full flex-col gap-3 sm:flex-1 sm:flex-row sm:items-center sm:gap-4"
+        >
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -247,16 +250,16 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
         </form>
       </div>
 
-      <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
-        <DialogContent className="w-[min(100vw-2rem,36rem)] rounded-3xl p-0 sm:p-6">
-          <DialogHeader className="px-6 pt-6 sm:px-0 sm:pt-0">
-            <DialogTitle>Profile & defaults</DialogTitle>
-            <DialogDescription>
-              Personalize your profile photo, bio, and default album visibility before sharing to WhatsApp.
-            </DialogDescription>
-          </DialogHeader>
+        <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
+          <DialogContent className="max-h-[calc(100vh-2rem)] w-full max-w-[calc(100vw-2rem)] overflow-y-auto rounded-3xl p-0 sm:max-h-none sm:max-w-xl sm:p-6">
+            <DialogHeader className="px-4 pt-4 sm:px-0 sm:pt-0">
+              <DialogTitle>Profile & defaults</DialogTitle>
+              <DialogDescription>
+                Personalize your profile photo, bio, and default album visibility before sharing to WhatsApp.
+              </DialogDescription>
+            </DialogHeader>
 
-          <div className="space-y-6 px-6 pb-6 sm:px-0">
+            <div className="space-y-6 px-4 pb-6 sm:px-0">
             {!loaded ? (
               <div className="space-y-4">
                 <div className="flex items-center gap-4">
