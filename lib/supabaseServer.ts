@@ -4,7 +4,7 @@ import type { SupabaseClient, User } from '@supabase/supabase-js';
 
 import type { Database } from '@/types/database';
 
-export type SupabaseServerClient = SupabaseClient<Database>;
+export type SupabaseServerClient = SupabaseClient<any>;
 
 export function getServerClient(): SupabaseServerClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -51,7 +51,7 @@ export function getServerClient(): SupabaseServerClient {
   });
 }
 
-export async function getServerUser(): Promise<{ user: User | null }> {
+export default async function getServerUser(): Promise<{ user: User | null }> {
   try {
     const supabase = getServerClient();
     const { data, error } = await supabase.auth.getUser();
