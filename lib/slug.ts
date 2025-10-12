@@ -1,16 +1,15 @@
-const TRIM_HYPHENS_REGEX = /(^-+|-+$)/g;
-const NON_ALPHANUMERIC_REGEX = /[^a-z0-9-]/g;
-const SEPARATOR_REGEX = /[\s_]+/g;
-const COLLAPSE_HYPHENS_REGEX = /-{2,}/g;
+const DIACRITICS_REGEX = /[\u0300-\u036f]/g;
+const NON_ALPHANUMERIC_REGEX = /[^a-z0-9]+/g;
+const MULTI_DASH_REGEX = /-{2,}/g;
+const TRIM_DASH_REGEX = /(^-+|-+$)/g;
 
-export function slugify(input: string): string {
-  return input
-    .normalize('NFKD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
+export function slugify(name: string): string {
+  return name
     .trim()
-    .replace(SEPARATOR_REGEX, '-')
-    .replace(NON_ALPHANUMERIC_REGEX, '')
-    .replace(COLLAPSE_HYPHENS_REGEX, '-')
-    .replace(TRIM_HYPHENS_REGEX, '');
+    .normalize('NFKD')
+    .replace(DIACRITICS_REGEX, '')
+    .toLowerCase()
+    .replace(NON_ALPHANUMERIC_REGEX, '-')
+    .replace(MULTI_DASH_REGEX, '-')
+    .replace(TRIM_DASH_REGEX, '');
 }
