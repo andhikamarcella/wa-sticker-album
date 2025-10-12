@@ -5,6 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getServerClient } from '@/lib/supabaseServer';
+import { isSupabaseConfigured } from '@/lib/env';
+import { mockFindAlbumBySlug } from '@/lib/mockDb';
 import type { Database } from '@/types/database';
 
 interface AlbumPageProps {
@@ -23,19 +25,30 @@ const VISIBILITY_LABEL: Record<AlbumVisibility, string> = {
 };
 
 export default async function AlbumPage({ params }: AlbumPageProps) {
-  const supabase = getServerClient();
-  const { data: album, error } = await supabase
-    .from('albums')
-    .select('id, name, visibility')
-    .eq('slug', params.slug)
-    .maybeSingle<AlbumSummary>();
+  let album: AlbumSummary | null = null;
 
-  if (error) {
-    if (error.code === 'PGRST116' || error.code === '42501') {
-      notFound();
+  if (isSupabaseConfigured()) {
+    const supabase = getServerClient();
+    const { data, error } = await supabase
+      .from('albums')
+      .select('id, name, visibility')
+      .eq('slug', params.slug)
+      .maybeSingle<AlbumSummary>();
+
+    if (error) {
+      if (error.code === 'PGRST116' || error.code === '42501') {
+        notFound();
+      }
+
+      throw error;
     }
 
-    throw error;
+    album = data ?? null;
+  } else {
+    const mock = mockFindAlbumBySlug(params.slug);
+    if (mock) {
+      album = { id: mock.id, name: mock.name, visibility: mock.visibility };
+    }
   }
 
   if (!album) {

@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { getServerClient } from '@/lib/supabaseServer';
 import { formatCount } from '@/lib/utils';
+import { isSupabaseConfigured, resolveAppUrl } from '@/lib/env';
+import { mockFindAlbumBySlug, mockListPacksByAlbum, mockListStickers } from '@/lib/mockDb';
 
 interface PublicAlbumPageProps {
   params: {
@@ -48,58 +50,99 @@ const VISIBILITY_BADGE: Record<'public' | 'unlisted' | 'private', string> = {
 };
 
 export default async function PublicAlbumPage({ params }: PublicAlbumPageProps) {
-  const supabase = getServerClient();
-  const { data: album, error: albumError } = await supabase
-    .from('albums')
-    .select('id, name, slug, visibility, updated_at')
-    .eq('slug', params.slug)
-    .maybeSingle();
+  const supabaseConfigured = isSupabaseConfigured();
+  let albumData: AlbumRow | (AlbumRow & { updated_at: string | null }) | null = null;
+  let stickers: StickerRow[] = [];
+  let latestPack: PackRow | null = null;
 
-  if (albumError) {
-    if (albumError.code === 'PGRST116' || albumError.code === '42501') {
+  if (supabaseConfigured) {
+    const supabase = getServerClient();
+    const { data: album, error: albumError } = await supabase
+      .from('albums')
+      .select('id, name, slug, visibility, updated_at')
+      .eq('slug', params.slug)
+      .maybeSingle();
+
+    if (albumError) {
+      if (albumError.code === 'PGRST116' || albumError.code === '42501') {
+        notFound();
+      }
+
+      throw albumError;
+    }
+
+    albumData = album as AlbumRow | null;
+
+    if (!albumData || !['public', 'unlisted'].includes(albumData.visibility)) {
       notFound();
     }
 
-    throw albumError;
+    const { data: stickersData, error: stickersError } = await supabase
+      .from('stickers')
+      .select('id, file_url, thumb_url, title, sort_index')
+      .eq('album_id', albumData.id)
+      .order('sort_index', { ascending: true })
+      .order('created_at', { ascending: true });
+
+    if (stickersError) {
+      throw stickersError;
+    }
+
+    stickers = (stickersData as StickerRow[] | null) ?? [];
+
+    const { data: packData, error: packError } = await supabase
+      .from('packs')
+      .select('id, name, exported_zip_url, public_url, wa_share_url, created_at')
+      .eq('album_id', albumData.id)
+      .not('exported_zip_url', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (packError && packError.code !== 'PGRST116') {
+      throw packError;
+    }
+
+    latestPack = packData && (packData as PackRow).exported_zip_url ? (packData as PackRow) : null;
+  } else {
+    const album = mockFindAlbumBySlug(params.slug);
+    if (!album || !['public', 'unlisted'].includes(album.visibility)) {
+      notFound();
+    }
+
+    albumData = {
+      id: album.id,
+      name: album.name,
+      slug: album.slug,
+      visibility: album.visibility,
+      updated_at: album.updatedAt,
+    } as AlbumRow;
+
+    stickers = mockListStickers(album.id).map((sticker, index) => ({
+      id: sticker.id,
+      file_url: sticker.fileUrl,
+      thumb_url: sticker.thumbUrl,
+      title: sticker.title,
+      sort_index: sticker.sortIndex ?? index,
+    }));
+
+    const packs = mockListPacksByAlbum(album.id);
+    const firstWithZip = packs.find((pack) => pack.exportedZipDataUrl);
+    if (firstWithZip) {
+      latestPack = {
+        id: firstWithZip.id,
+        name: firstWithZip.name,
+        exported_zip_url: firstWithZip.exportedZipDataUrl,
+        public_url: firstWithZip.publicUrl,
+        wa_share_url: firstWithZip.waShareUrl,
+        created_at: firstWithZip.createdAt,
+      } as PackRow;
+    }
   }
 
-  const albumData = album as AlbumRow | null;
-
-  if (!albumData || !['public', 'unlisted'].includes(albumData.visibility)) {
-    notFound();
-  }
-
-  const { data: stickersData, error: stickersError } = await supabase
-    .from('stickers')
-    .select('id, file_url, thumb_url, title, sort_index')
-    .eq('album_id', albumData.id)
-    .order('sort_index', { ascending: true })
-    .order('created_at', { ascending: true });
-
-  if (stickersError) {
-    throw stickersError;
-  }
-
-  const stickers = (stickersData as StickerRow[] | null) ?? [];
-
-  const { data: packData, error: packError } = await supabase
-    .from('packs')
-    .select('id, name, exported_zip_url, public_url, wa_share_url, created_at')
-    .eq('album_id', albumData.id)
-    .not('exported_zip_url', 'is', null)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (packError && packError.code !== 'PGRST116') {
-    throw packError;
-  }
-
-  const latestPack = packData && (packData as PackRow).exported_zip_url ? (packData as PackRow) : null;
-
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000').replace(/\/$/, '');
-  const publicUrl = `${siteUrl}/p/${albumData.slug}`;
-  const updatedAt = albumData.updated_at ? new Date(albumData.updated_at) : null;
+  const siteUrl = resolveAppUrl().replace(/\/$/, '');
+  const publicUrl = `${siteUrl}/p/${albumData!.slug}`;
+  const updatedAt = albumData!.updated_at ? new Date(albumData!.updated_at) : null;
   const formattedUpdatedAt = updatedAt && !Number.isNaN(updatedAt.getTime())
     ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric' }).format(updatedAt)
     : null;

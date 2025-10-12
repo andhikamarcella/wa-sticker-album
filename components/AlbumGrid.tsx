@@ -14,6 +14,9 @@ import { useToast } from '@/hooks/useToast';
 import { cn } from '@/lib/utils';
 
 import { CreateAlbumDialog } from '@/components/CreateAlbumDialog';
+import { ShareButtons } from '@/components/ShareButtons';
+import { resolveAppUrl } from '@/lib/env';
+import { buildWaMessage, buildWaUrl } from '@/lib/whatsapp';
 
 export type AlbumScope = 'all' | 'owned' | 'shared';
 
@@ -63,6 +66,7 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
   const [scope, setScope] = useState<AlbumScope>(defaultScope);
   const [renameTarget, setRenameTarget] = useState<AlbumListItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AlbumListItem | null>(null);
+  const [shareTarget, setShareTarget] = useState<AlbumListItem | null>(null);
   const [renameVisibility, setRenameVisibility] = useState<AlbumVisibility>('private');
   const [renameName, setRenameName] = useState('');
   const queryClient = useQueryClient();
@@ -70,7 +74,7 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
 
   const normalizedSearch = useMemo(() => search?.trim() ?? '', [search]);
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['albums', scope, normalizedSearch],
     queryFn: async (): Promise<AlbumListItem[]> => {
       const params = new URLSearchParams();
@@ -89,12 +93,24 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
         cache: 'no-store',
       });
 
+      let payload: unknown;
+
       if (!response.ok) {
-        throw new Error('Failed to load albums');
+        let message = 'Failed to load albums';
+        payload = await response.json().catch(() => null);
+        if (payload && typeof payload === 'object') {
+          const body = payload as { error?: string; message?: string };
+          const detail = body.error ?? body.message;
+          if (typeof detail === 'string' && detail.trim().length > 0) {
+            message = detail;
+          }
+        }
+
+        throw new Error(message);
       }
 
-      const json = await response.json();
-      const parsed = responseSchema.safeParse(json);
+      payload = await response.json();
+      const parsed = responseSchema.safeParse(payload);
       if (!parsed.success) {
         throw new Error('Invalid response from server');
       }
@@ -199,6 +215,12 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
     setDeleteTarget(album);
   };
 
+  const handleShareRequest = (albumId: string) => {
+    const album = data?.find((item) => item.id === albumId);
+    if (!album) return;
+    setShareTarget(album);
+  };
+
   const handleRenameSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!renameTarget) return;
@@ -244,8 +266,14 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
       </div>
       {isLoading && <AlbumGridSkeleton />}
       {isError && (
-        <div className="rounded-3xl border border-destructive/50 bg-destructive/10 p-6 text-sm text-destructive">
-          Unable to load albums. Please try again.
+        <div className="space-y-2 rounded-3xl border border-destructive/40 bg-destructive/10 p-6 text-sm text-destructive">
+          <p className="font-semibold">{error instanceof Error ? error.message : 'Unable to load albums.'}</p>
+          {error instanceof Error && error.message.toLowerCase().includes('supabase') ? (
+            <p className="text-xs text-destructive/80">
+              Update your <code className="rounded bg-destructive/15 px-1.5 py-0.5">.env.local</code> with NEXT_PUBLIC_SUPABASE_URL
+              and NEXT_PUBLIC_SUPABASE_ANON_KEY to access your real albums.
+            </p>
+          ) : null}
         </div>
       )}
       {showEmpty && (
@@ -273,9 +301,10 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
               stickersCount={album.stickersCount}
               thumbnails={album.thumbnails}
               onRename={handleRenameRequest}
+              onShare={handleShareRequest}
               onDelete={handleDeleteRequest}
-            />
-          ))}
+          />
+        ))}
         </div>
       )}
 
@@ -347,6 +376,25 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
       </Dialog>
 
       <Dialog
+        open={shareTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShareTarget(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Share album to WhatsApp</DialogTitle>
+            <DialogDescription>
+              Copy the public link or jump straight into WhatsApp with a pre-filled message.
+            </DialogDescription>
+          </DialogHeader>
+          {shareTarget ? <ShareDialogContent album={shareTarget} onClose={() => setShareTarget(null)} /> : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
           if (!open) {
@@ -389,6 +437,57 @@ export function AlbumGrid({ search, defaultScope = 'all' }: AlbumGridProps) {
         </DialogContent>
       </Dialog>
     </section>
+  );
+}
+
+type ShareDialogContentProps = {
+  album: AlbumListItem;
+  onClose: () => void;
+};
+
+function ShareDialogContent({ album, onClose }: ShareDialogContentProps) {
+  const baseUrl = useMemo(() => {
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      return window.location.origin;
+    }
+    return resolveAppUrl();
+  }, []);
+
+  const normalizedBase = useMemo(() => baseUrl.replace(/\/$/, ''), [baseUrl]);
+  const publicUrl = `${normalizedBase}/p/${album.slug}`;
+  const message = useMemo(
+    () => buildWaMessage({ albumName: album.name, albumUrl: publicUrl }),
+    [album.name, publicUrl],
+  );
+  const waUrl = useMemo(() => buildWaUrl({ message }), [message]);
+  const shareWarning = album.visibility === 'private';
+
+  return (
+    <div className="space-y-5">
+      <div className="space-y-1">
+        <p className="text-sm font-semibold text-foreground">{album.name}</p>
+        <p className="text-xs text-muted-foreground">
+          {album.stickersCount > 0
+            ? `${album.stickersCount} stickers ready to share.`
+            : 'Add stickers to this album to make the share richer.'}
+        </p>
+      </div>
+      {shareWarning ? (
+        <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700">
+          Set this album to <strong>public</strong> or <strong>unlisted</strong> so friends can open the link.
+        </div>
+      ) : null}
+      <ShareButtons publicUrl={publicUrl} waUrl={waUrl} />
+      <div className="rounded-2xl border border-border/70 bg-muted/40 p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">WhatsApp message preview</p>
+        <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{message}</p>
+      </div>
+      <div className="flex justify-end">
+        <Button type="button" className="rounded-2xl" onClick={onClose}>
+          Close
+        </Button>
+      </div>
+    </div>
   );
 }
 

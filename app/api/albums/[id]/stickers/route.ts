@@ -3,6 +3,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { getServerClient, type SupabaseServerClient } from '@/lib/supabaseServer';
+import { isSupabaseConfigured } from '@/lib/env';
+import {
+  mockAddStickers,
+  mockDeleteStickers,
+  mockGetAlbum,
+  mockListStickers,
+  mockReorderStickers,
+} from '@/lib/mockDb';
 
 const ACCEPTED_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
@@ -103,8 +111,29 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } },
 ) {
-  const supabase = getServerClient();
   const albumId = params.id;
+
+  if (!isSupabaseConfigured()) {
+    const album = mockGetAlbum(albumId);
+
+    if (!album) {
+      return NextResponse.json({ error: 'Album not found' }, { status: 404 });
+    }
+
+    const stickers = mockListStickers(albumId).map<StickerRow>((sticker) => ({
+      id: sticker.id,
+      file_url: sticker.fileUrl,
+      thumb_url: sticker.thumbUrl,
+      title: sticker.title,
+      size_kb: sticker.sizeKb,
+      sort_index: sticker.sortIndex,
+      created_at: sticker.createdAt,
+    }));
+
+    return NextResponse.json<{ data: StickerRow[] }>({ data: stickers });
+  }
+
+  const supabase = getServerClient();
 
   const {
     data: { user },
@@ -141,8 +170,61 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } },
 ) {
-  const supabase = getServerClient();
   const albumId = params.id;
+
+  if (!isSupabaseConfigured()) {
+    const album = mockGetAlbum(albumId);
+
+    if (!album) {
+      return NextResponse.json({ error: 'Album not found' }, { status: 404 });
+    }
+
+    const formData = await req.formData();
+    const files = formData
+      .getAll('files')
+      .filter((value): value is File => value instanceof File && value.size > 0);
+
+    if (files.length === 0) {
+      return NextResponse.json({ error: 'Tidak ada file yang diunggah' }, { status: 400 });
+    }
+
+    for (const file of files) {
+      if (!ACCEPTED_MIME_TYPES.has(file.type)) {
+        return NextResponse.json({ error: `Tipe file tidak didukung: ${file.type}` }, { status: 400 });
+      }
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        return NextResponse.json({ error: `${file.name} melebihi batas ukuran 2MB` }, { status: 400 });
+      }
+    }
+
+    const entries = await Promise.all(
+      files.map(async (file) => {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const base64 = buffer.toString('base64');
+        const dataUrl = `data:${file.type || 'image/png'};base64,${base64}`;
+        return {
+          fileUrl: dataUrl,
+          thumbUrl: dataUrl,
+          title: file.name.replace(/\.[^/.]+$/, '') || null,
+          sizeKb: Math.max(1, Math.round(buffer.length / 1024)),
+        };
+      }),
+    );
+
+    const inserted = mockAddStickers(albumId, album.ownerId, entries).map<StickerRow>((sticker) => ({
+      id: sticker.id,
+      file_url: sticker.fileUrl,
+      thumb_url: sticker.thumbUrl,
+      title: sticker.title,
+      size_kb: sticker.sizeKb,
+      sort_index: sticker.sortIndex,
+      created_at: sticker.createdAt,
+    }));
+
+    return NextResponse.json({ data: inserted });
+  }
+
+  const supabase = getServerClient();
 
   const {
     data: { user },
@@ -251,7 +333,6 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } },
 ) {
-  const supabase = getServerClient();
   const albumId = params.id;
 
   const body = await req.json().catch(() => null);
@@ -260,6 +341,19 @@ export async function PATCH(
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
+
+  if (!isSupabaseConfigured()) {
+    const album = mockGetAlbum(albumId);
+
+    if (!album) {
+      return NextResponse.json({ error: 'Album not found' }, { status: 404 });
+    }
+
+    mockReorderStickers(albumId, parsed.data.orders);
+    return NextResponse.json({ ok: true });
+  }
+
+  const supabase = getServerClient();
 
   const {
     data: { user },
@@ -299,7 +393,6 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: { id: string } },
 ) {
-  const supabase = getServerClient();
   const albumId = params.id;
 
   const body = await req.json().catch(() => null);
@@ -308,6 +401,19 @@ export async function DELETE(
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
+
+  if (!isSupabaseConfigured()) {
+    const album = mockGetAlbum(albumId);
+
+    if (!album) {
+      return NextResponse.json({ error: 'Album not found' }, { status: 404 });
+    }
+
+    mockDeleteStickers(albumId, parsed.data.ids);
+    return NextResponse.json({ ok: true });
+  }
+
+  const supabase = getServerClient();
 
   const {
     data: { user },

@@ -3,6 +3,8 @@ import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
 import { getServerClient } from '@/lib/supabaseServer';
+import { isSupabaseConfigured } from '@/lib/env';
+import { mockDeleteAlbum, mockGetAlbum, mockUpdateAlbum } from '@/lib/mockDb';
 import { slugify } from '@/lib/slug';
 
 const updateAlbumSchema = z
@@ -25,8 +27,6 @@ type AlbumRow = {
 };
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
-  const supabase = getServerClient();
-  const client = supabase as unknown as SupabaseClient<any>;
   const body = await request.json().catch(() => ({}));
   const parsed = updateAlbumSchema.safeParse(body ?? {});
 
@@ -36,6 +36,31 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 
   const albumId = params.id;
+
+  if (!isSupabaseConfigured()) {
+    const existingAlbum = mockGetAlbum(albumId);
+
+    if (!existingAlbum) {
+      return NextResponse.json({ error: 'Album not found' }, { status: 404 });
+    }
+
+    const updated = mockUpdateAlbum(albumId, parsed.data);
+
+    if (!updated) {
+      return NextResponse.json({ error: 'Failed to update album' }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      id: updated.id,
+      name: updated.name,
+      slug: updated.slug,
+      visibility: updated.visibility,
+      updatedAt: updated.updatedAt,
+    });
+  }
+
+  const supabase = getServerClient();
+  const client = supabase as unknown as SupabaseClient<any>;
 
   const {
     data: { user },
@@ -110,9 +135,21 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 }
 
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
+  const albumId = params.id;
+
+  if (!isSupabaseConfigured()) {
+    const album = mockGetAlbum(albumId);
+
+    if (!album) {
+      return NextResponse.json({ error: 'Album not found' }, { status: 404 });
+    }
+
+    mockDeleteAlbum(albumId);
+    return NextResponse.json({ success: true });
+  }
+
   const supabase = getServerClient();
   const client = supabase as unknown as SupabaseClient<any>;
-  const albumId = params.id;
 
   const {
     data: { user },
