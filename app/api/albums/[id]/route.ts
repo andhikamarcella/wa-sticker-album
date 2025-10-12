@@ -8,14 +8,10 @@ import { slugify } from '@/lib/slug';
 import { SupabaseSchemaMissingError, shouldUseMockFromSupabaseError } from '@/lib/utils';
 import { getServerClient } from '@/lib/supabaseServer';
 
-const updateAlbumSchema = z
-  .object({
-    name: z.string().trim().min(1, 'Name is required').max(120, 'Name is too long').optional(),
-    visibility: z.union([z.literal('public'), z.literal('unlisted'), z.literal('private')]).optional(),
-  })
-  .refine((value) => value.name || value.visibility, {
-    message: 'At least one field must be provided',
-  });
+const updateAlbumSchema = z.object({
+  name: z.string().trim().min(1, 'Name is required').max(120, 'Name is too long').optional(),
+  visibility: z.union([z.literal('public'), z.literal('unlisted'), z.literal('private')]).optional(),
+}).refine((v) => v.name || v.visibility, { message: 'At least one field must be provided' });
 
 type AlbumRow = {
   id: string;
@@ -37,11 +33,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
   const albumId = params.id;
 
-  // Fallback dev tanpa Supabase
   if (!isSupabaseConfigured()) {
     const existingAlbum = mockGetAlbum(albumId);
     if (!existingAlbum) return NextResponse.json({ error: 'Album not found' }, { status: 404 });
-
     const updated = mockUpdateAlbum(albumId, parsed.data);
     if (!updated) return NextResponse.json({ error: 'Failed to update album' }, { status: 500 });
 
@@ -154,7 +148,6 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
   const albumId = params.id;
 
-  // Fallback dev tanpa Supabase
   if (!isSupabaseConfigured()) {
     const album = mockGetAlbum(albumId);
     if (!album) return NextResponse.json({ error: 'Album not found' }, { status: 404 });
