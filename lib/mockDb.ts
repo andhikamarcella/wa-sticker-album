@@ -141,6 +141,10 @@ export function mockListAlbumsByOwner(ownerId: string): MockAlbum[] {
   return Array.from(db.albums.values()).filter((album) => album.ownerId === ownerId);
 }
 
+export function mockListAlbumsSharedWith(_userId: string): MockAlbum[] {
+  return [];
+}
+
 export function mockListAlbumsByVisibility(visibility: MockAlbumVisibility[]): MockAlbum[] {
   const db = getStore();
   const allow = new Set(visibility);
