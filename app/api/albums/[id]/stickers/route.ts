@@ -30,11 +30,7 @@ const deleteSchema = z.object({
   ids: z.array(z.string().uuid('Sticker id tidak valid')).min(1, 'Minimal satu sticker untuk dihapus'),
 });
 
-type AlbumRow = {
-  id: string;
-  owner_id: string;
-};
-
+type AlbumRow = { id: string; owner_id: string };
 type StickerRow = {
   id: string;
   file_url: string;
@@ -45,37 +41,23 @@ type StickerRow = {
   created_at: string | null;
 };
 
-async function fetchAlbum(
-  supabase: SupabaseServerClient,
-  albumId: string,
-): Promise<AlbumRow | null> {
+async function fetchAlbum(supabase: SupabaseServerClient, albumId: string): Promise<AlbumRow | null> {
   const { data, error } = await (supabase.from('albums') as any)
     .select('id, owner_id')
     .eq('id', albumId)
     .maybeSingle();
 
   if (error) {
-    if (error.code === 'PGRST116') {
-      return null;
-    }
+    if (error.code === 'PGRST116') return null;
     throw error;
   }
-
   return (data as AlbumRow | null) ?? null;
 }
 
-async function canWriteAlbum(
-  supabase: SupabaseServerClient,
-  userId: string,
-  albumId: string,
-): Promise<boolean> {
+async function canWriteAlbum(supabase: SupabaseServerClient, userId: string, albumId: string): Promise<boolean> {
   const album = await fetchAlbum(supabase, albumId);
-  if (!album) {
-    return false;
-  }
-  if (album.owner_id === userId) {
-    return true;
-  }
+  if (!album) return false;
+  if (album.owner_id === userId) return true;
 
   const { data, error } = await (supabase.from('album_collaborators') as any)
     .select('id')
@@ -84,12 +66,9 @@ async function canWriteAlbum(
     .maybeSingle();
 
   if (error) {
-    if (error.code === 'PGRST116') {
-      return false;
-    }
+    if (error.code === 'PGRST116') return false;
     throw error;
   }
-
   return Boolean(data);
 }
 
@@ -102,32 +81,24 @@ function getExtension(file: File): string {
 }
 
 async function touchAlbum(supabase: SupabaseServerClient, albumId: string) {
-  await (supabase.from('albums') as any)
-    .update({ updated_at: new Date().toISOString() })
-    .eq('id', albumId);
+  await (supabase.from('albums') as any).update({ updated_at: new Date().toISOString() }).eq('id', albumId);
 }
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const albumId = params.id;
 
   if (!isSupabaseConfigured()) {
     const album = mockGetAlbum(albumId);
+    if (!album) return NextResponse.json({ error: 'Album not found' }, { status: 404 });
 
-    if (!album) {
-      return NextResponse.json({ error: 'Album not found' }, { status: 404 });
-    }
-
-    const stickers = mockListStickers(albumId).map<StickerRow>((sticker) => ({
-      id: sticker.id,
-      file_url: sticker.fileUrl,
-      thumb_url: sticker.thumbUrl,
-      title: sticker.title,
-      size_kb: sticker.sizeKb,
-      sort_index: sticker.sortIndex,
-      created_at: sticker.createdAt,
+    const stickers = mockListStickers(albumId).map<StickerRow>((s) => ({
+      id: s.id,
+      file_url: s.fileUrl,
+      thumb_url: s.thumbUrl,
+      title: s.title,
+      size_kb: s.sizeKb,
+      sort_index: s.sortIndex,
+      created_at: s.createdAt,
     }));
 
     return NextResponse.json<{ data: StickerRow[] }>({ data: stickers });
@@ -139,19 +110,11 @@ export async function GET(
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
-
-  if (userError) {
-    return NextResponse.json({ error: userError.message }, { status: 401 });
-  }
-
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  if (userError) return NextResponse.json({ error: userError.message }, { status: 401 });
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const album = await fetchAlbum(supabase, albumId);
-  if (!album) {
-    return NextResponse.json({ error: 'Album tidak ditemukan' }, { status: 404 });
-  }
+  if (!album) return NextResponse.json({ error: 'Album tidak ditemukan' }, { status: 404 });
 
   const { data, error } = await (supabase.from('stickers') as any)
     .select('id, file_url, thumb_url, title, size_kb, sort_index, created_at')
@@ -159,42 +122,25 @@ export async function GET(
     .order('sort_index', { ascending: true })
     .order('created_at', { ascending: true });
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json<{ data: StickerRow[] }>({ data: (data as StickerRow[]) ?? [] });
 }
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const albumId = params.id;
 
   if (!isSupabaseConfigured()) {
     const album = mockGetAlbum(albumId);
-
-    if (!album) {
-      return NextResponse.json({ error: 'Album not found' }, { status: 404 });
-    }
+    if (!album) return NextResponse.json({ error: 'Album not found' }, { status: 404 });
 
     const formData = await req.formData();
-    const files = formData
-      .getAll('files')
-      .filter((value): value is File => value instanceof File && value.size > 0);
-
-    if (files.length === 0) {
-      return NextResponse.json({ error: 'Tidak ada file yang diunggah' }, { status: 400 });
-    }
+    const files = formData.getAll('files').filter((v): v is File => v instanceof File && v.size > 0);
+    if (files.length === 0) return NextResponse.json({ error: 'Tidak ada file yang diunggah' }, { status: 400 });
 
     for (const file of files) {
-      if (!ACCEPTED_MIME_TYPES.has(file.type)) {
-        return NextResponse.json({ error: `Tipe file tidak didukung: ${file.type}` }, { status: 400 });
-      }
-      if (file.size > MAX_FILE_SIZE_BYTES) {
+      if (!ACCEPTED_MIME_TYPES.has(file.type)) return NextResponse.json({ error: `Tipe file tidak didukung: ${file.type}` }, { status: 400 });
+      if (file.size > MAX_FILE_SIZE_BYTES)
         return NextResponse.json({ error: `${file.name} melebihi batas ukuran 2MB` }, { status: 400 });
-      }
     }
 
     const entries = await Promise.all(
@@ -211,14 +157,14 @@ export async function POST(
       }),
     );
 
-    const inserted = mockAddStickers(albumId, album.ownerId, entries).map<StickerRow>((sticker) => ({
-      id: sticker.id,
-      file_url: sticker.fileUrl,
-      thumb_url: sticker.thumbUrl,
-      title: sticker.title,
-      size_kb: sticker.sizeKb,
-      sort_index: sticker.sortIndex,
-      created_at: sticker.createdAt,
+    const inserted = mockAddStickers(albumId, album.ownerId, entries).map<StickerRow>((s) => ({
+      id: s.id,
+      file_url: s.fileUrl,
+      thumb_url: s.thumbUrl,
+      title: s.title,
+      size_kb: s.sizeKb,
+      sort_index: s.sortIndex,
+      created_at: s.createdAt,
     }));
 
     return NextResponse.json({ data: inserted });
@@ -230,36 +176,21 @@ export async function POST(
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
-
-  if (userError) {
-    return NextResponse.json({ error: userError.message }, { status: 401 });
-  }
-
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  if (userError) return NextResponse.json({ error: userError.message }, { status: 401 });
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const writable = await canWriteAlbum(supabase, user.id, albumId);
-  if (!writable) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  if (!writable) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const formData = await req.formData();
-  const files = formData
-    .getAll('files')
-    .filter((value): value is File => value instanceof File && value.size > 0);
-
-  if (files.length === 0) {
-    return NextResponse.json({ error: 'Tidak ada file yang diunggah' }, { status: 400 });
-  }
+  const files = formData.getAll('files').filter((v): v is File => v instanceof File && v.size > 0);
+  if (files.length === 0) return NextResponse.json({ error: 'Tidak ada file yang diunggah' }, { status: 400 });
 
   for (const file of files) {
-    if (!ACCEPTED_MIME_TYPES.has(file.type)) {
+    if (!ACCEPTED_MIME_TYPES.has(file.type))
       return NextResponse.json({ error: `Tipe file tidak didukung: ${file.type}` }, { status: 400 });
-    }
-    if (file.size > MAX_FILE_SIZE_BYTES) {
+    if (file.size > MAX_FILE_SIZE_BYTES)
       return NextResponse.json({ error: `${file.name} melebihi batas ukuran 2MB` }, { status: 400 });
-    }
   }
 
   const { data: maxSortRow, error: maxSortError } = await (supabase.from('stickers') as any)
@@ -268,10 +199,7 @@ export async function POST(
     .order('sort_index', { ascending: false })
     .limit(1)
     .maybeSingle();
-
-  if (maxSortError && maxSortError.code !== 'PGRST116') {
-    return NextResponse.json({ error: maxSortError.message }, { status: 500 });
-  }
+  if (maxSortError && maxSortError.code !== 'PGRST116') return NextResponse.json({ error: maxSortError.message }, { status: 500 });
 
   let lastSortIndex = (maxSortRow as { sort_index: number } | null)?.sort_index ?? -1;
   const insertPayload: Array<{
@@ -289,17 +217,12 @@ export async function POST(
     const path = `${albumId}/${user.id}/${randomUUID()}.${extension}`;
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    const { error: uploadError } = await supabase.storage
-      .from('stickers')
-      .upload(path, buffer, {
-        cacheControl: '3600',
-        contentType: file.type,
-        upsert: false,
-      });
-
-    if (uploadError) {
-      return NextResponse.json({ error: uploadError.message }, { status: 500 });
-    }
+    const { error: uploadError } = await supabase.storage.from('stickers').upload(path, buffer, {
+      cacheControl: '3600',
+      contentType: file.type,
+      upsert: false,
+    });
+    if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 });
 
     const { data: publicUrlData } = supabase.storage.from('stickers').getPublicUrl(path);
     const publicUrl = publicUrlData.publicUrl;
@@ -319,36 +242,22 @@ export async function POST(
   const { data: inserted, error: insertError } = await (supabase.from('stickers') as any)
     .insert(insertPayload)
     .select('id, file_url, thumb_url, title, size_kb, sort_index, created_at');
-
-  if (insertError) {
-    return NextResponse.json({ error: insertError.message }, { status: 500 });
-  }
+  if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
 
   await touchAlbum(supabase, albumId);
-
   return NextResponse.json({ data: inserted ?? [] });
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const albumId = params.id;
 
   const body = await req.json().catch(() => null);
   const parsed = reorderSchema.safeParse(body);
-
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  }
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
   if (!isSupabaseConfigured()) {
     const album = mockGetAlbum(albumId);
-
-    if (!album) {
-      return NextResponse.json({ error: 'Album not found' }, { status: 404 });
-    }
-
+    if (!album) return NextResponse.json({ error: 'Album not found' }, { status: 404 });
     mockReorderStickers(albumId, parsed.data.orders);
     return NextResponse.json({ ok: true });
   }
@@ -359,56 +268,34 @@ export async function PATCH(
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
-
-  if (userError) {
-    return NextResponse.json({ error: userError.message }, { status: 401 });
-  }
-
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  if (userError) return NextResponse.json({ error: userError.message }, { status: 401 });
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const writable = await canWriteAlbum(supabase, user.id, albumId);
-  if (!writable) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  if (!writable) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   for (const order of parsed.data.orders) {
     const { error } = await (supabase.from('stickers') as any)
       .update({ sort_index: order.sort_index })
       .eq('id', order.id)
       .eq('album_id', albumId);
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
   await touchAlbum(supabase, albumId);
-
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const albumId = params.id;
 
   const body = await req.json().catch(() => null);
   const parsed = deleteSchema.safeParse(body);
-
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  }
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
   if (!isSupabaseConfigured()) {
     const album = mockGetAlbum(albumId);
-
-    if (!album) {
-      return NextResponse.json({ error: 'Album not found' }, { status: 404 });
-    }
-
+    if (!album) return NextResponse.json({ error: 'Album not found' }, { status: 404 });
     mockDeleteStickers(albumId, parsed.data.ids);
     return NextResponse.json({ ok: true });
   }
@@ -419,30 +306,15 @@ export async function DELETE(
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
-
-  if (userError) {
-    return NextResponse.json({ error: userError.message }, { status: 401 });
-  }
-
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  if (userError) return NextResponse.json({ error: userError.message }, { status: 401 });
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const writable = await canWriteAlbum(supabase, user.id, albumId);
-  if (!writable) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  if (!writable) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const { error } = await (supabase.from('stickers') as any)
-    .delete()
-    .eq('album_id', albumId)
-    .in('id', parsed.data.ids);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
-  }
+  const { error } = await (supabase.from('stickers') as any).delete().eq('album_id', albumId).in('id', parsed.data.ids);
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
   await touchAlbum(supabase, albumId);
-
   return NextResponse.json({ ok: true });
 }
