@@ -5,29 +5,12 @@ import { isSupabaseConfigured, resolveAppUrl } from '@/lib/env';
 import { mockGetAlbum, mockGetPack, mockPublishPack } from '@/lib/mockDb';
 import { SupabaseSchemaMissingError, shouldUseMockFromSupabaseError } from '@/lib/utils';
 
-type PackRow = {
-  id: string;
-  album_id: string;
-  owner_id: string;
-  public_url: string | null;
-  wa_share_url: string | null;
-};
+type PackRow = { id: string; album_id: string; owner_id: string; public_url: string | null; wa_share_url: string | null; };
+type AlbumRow = { id: string; slug: string; owner_id: string; };
 
-type AlbumRow = {
-  id: string;
-  slug: string;
-  owner_id: string;
-};
-
-async function fetchPack(
-  supabase: SupabaseServerClient,
-  packId: string,
-): Promise<PackRow | null> {
+async function fetchPack(supabase: SupabaseServerClient, packId: string): Promise<PackRow | null> {
   const { data, error } = await (supabase.from('packs') as any)
-    .select('id, album_id, owner_id, public_url, wa_share_url')
-    .eq('id', packId)
-    .maybeSingle();
-
+    .select('id, album_id, owner_id, public_url, wa_share_url').eq('id', packId).maybeSingle();
   if (error) {
     if (error.code === 'PGRST116') {
       return null;
@@ -37,19 +20,12 @@ async function fetchPack(
     }
     throw error;
   }
-
   return (data as PackRow | null) ?? null;
 }
 
-async function fetchAlbum(
-  supabase: SupabaseServerClient,
-  albumId: string,
-): Promise<AlbumRow | null> {
+async function fetchAlbum(supabase: SupabaseServerClient, albumId: string): Promise<AlbumRow | null> {
   const { data, error } = await (supabase.from('albums') as any)
-    .select('id, slug, owner_id')
-    .eq('id', albumId)
-    .maybeSingle();
-
+    .select('id, slug, owner_id').eq('id', albumId).maybeSingle();
   if (error) {
     if (error.code === 'PGRST116') {
       return null;
@@ -59,30 +35,16 @@ async function fetchAlbum(
     }
     throw error;
   }
-
   return (data as AlbumRow | null) ?? null;
 }
 
-async function canWriteAlbum(
-  supabase: SupabaseServerClient,
-  userId: string,
-  albumId: string,
-): Promise<boolean> {
+async function canWriteAlbum(supabase: SupabaseServerClient, userId: string, albumId: string): Promise<boolean> {
   const album = await fetchAlbum(supabase, albumId);
-  if (!album) {
-    return false;
-  }
-
-  if (album.owner_id === userId) {
-    return true;
-  }
+  if (!album) return false;
+  if (album.owner_id === userId) return true;
 
   const { data, error } = await (supabase.from('album_collaborators') as any)
-    .select('id')
-    .eq('album_id', albumId)
-    .eq('user_id', userId)
-    .maybeSingle();
-
+    .select('id').eq('album_id', albumId).eq('user_id', userId).maybeSingle();
   if (error) {
     if (error.code === 'PGRST116') {
       return false;
@@ -92,7 +54,6 @@ async function canWriteAlbum(
     }
     throw error;
   }
-
   return Boolean(data);
 }
 
