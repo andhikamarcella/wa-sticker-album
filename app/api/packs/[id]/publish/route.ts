@@ -146,7 +146,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000').replace(/\/$/, '');
+  const baseUrl = resolveAppUrl().replace(/\/$/, '');
   const publicUrl = `${baseUrl}/p/${album.slug}`;
   const waUrl = `https://wa.me/?text=${encodeURIComponent(publicUrl)}`;
 

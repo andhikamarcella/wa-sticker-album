@@ -1,8 +1,8 @@
-import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
-export function cn(...classes: ClassValue[]): string {
-  return twMerge(clsx(...classes));
+export function cn(...classes: Array<string | false | null | undefined>): string {
+  const filtered = classes.filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+  return twMerge(...filtered);
 }
 
 const COUNT_UNITS = [

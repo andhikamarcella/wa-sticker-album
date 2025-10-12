@@ -71,6 +71,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
   if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
   if (!existingAlbum) return NextResponse.json({ error: 'Album not found' }, { status: 404 });
+  if (existingAlbum.owner_id !== user.id) {
+    return NextResponse.json({ error: 'Only the owner can update this album' }, { status: 403 });
+  }
 
   const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
