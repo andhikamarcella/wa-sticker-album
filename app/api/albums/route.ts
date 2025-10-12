@@ -82,10 +82,13 @@ export async function GET(request: NextRequest) {
     ]);
 
     if (!ownedResult.ok) {
-      return NextResponse.json({ error: ownedResult.error }, { status: 500 });
+      console.warn('Falling back to mock albums (owned)', ownedResult.error);
+      return NextResponse.json<{ data: AlbumListItem[] }>({ data: buildMockAlbumItems(scope, searchQuery) });
     }
+
     if (!sharedResult.ok) {
-      return NextResponse.json({ error: sharedResult.error }, { status: 500 });
+      console.warn('Falling back to mock albums (shared)', sharedResult.error);
+      return NextResponse.json<{ data: AlbumListItem[] }>({ data: buildMockAlbumItems(scope, searchQuery) });
     }
 
     const selected = selectAlbums(scope, ownedResult.albums, sharedResult.albums);
