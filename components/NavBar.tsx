@@ -27,39 +27,14 @@ type VisibilityOption<T extends string> = {
 };
 
 const profileVisibilityOptions: VisibilityOption<'public' | 'private'>[] = [
-  {
-    value: 'public',
-    label: 'Public profile',
-    description: 'Your name and avatar are visible to anyone with your shared album links.',
-    icon: <Globe2 className="h-4 w-4" aria-hidden />,
-  },
-  {
-    value: 'private',
-    label: 'Private profile',
-    description: 'Only collaborators you invite can see your profile details.',
-    icon: <Lock className="h-4 w-4" aria-hidden />,
-  },
+  { value: 'public', label: 'Public profile', description: 'Your name and avatar are visible to anyone with your shared album links.', icon: <Globe2 className="h-4 w-4" aria-hidden /> },
+  { value: 'private', label: 'Private profile', description: 'Only collaborators you invite can see your profile details.', icon: <Lock className="h-4 w-4" aria-hidden /> },
 ];
 
 const albumVisibilityOptions: VisibilityOption<'public' | 'unlisted' | 'private'>[] = [
-  {
-    value: 'public',
-    label: 'Public albums',
-    description: 'Albums are discoverable and can be shared broadly.',
-    icon: <Globe2 className="h-4 w-4" aria-hidden />,
-  },
-  {
-    value: 'unlisted',
-    label: 'Unlisted by default',
-    description: 'Albums require a link but are not listed publicly.',
-    icon: <Link2 className="h-4 w-4" aria-hidden />,
-  },
-  {
-    value: 'private',
-    label: 'Private albums',
-    description: 'Albums start locked and only collaborators can access them.',
-    icon: <Lock className="h-4 w-4" aria-hidden />,
-  },
+  { value: 'public', label: 'Public albums', description: 'Albums are discoverable and can be shared broadly.', icon: <Globe2 className="h-4 w-4" aria-hidden /> },
+  { value: 'unlisted', label: 'Unlisted by default', description: 'Albums require a link but are not listed publicly.', icon: <Link2 className="h-4 w-4" aria-hidden /> },
+  { value: 'private', label: 'Private albums', description: 'Albums start locked and only collaborators can access them.', icon: <Lock className="h-4 w-4" aria-hidden /> },
 ];
 
 const MAX_AVATAR_SIZE = 2 * 1024 * 1024; // 2MB
@@ -70,9 +45,7 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
   const { profile, updateProfile, resetProfile, loaded } = useProfileStorage(userLabel ?? undefined);
 
   const displayName = useMemo(() => {
-    if (!loaded) {
-      return userLabel?.trim() || undefined;
-    }
+    if (!loaded) return userLabel?.trim() || undefined;
     return profile.displayName.trim() || userLabel?.trim() || undefined;
   }, [loaded, profile.displayName, userLabel]);
 
@@ -159,21 +132,13 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
       defaultAlbumVisibility: draftAlbumVisibility,
     });
 
-    showToast({
-      title: 'Profile updated',
-      description: 'Your details and album defaults are now saved.',
-      variant: 'success',
-    });
+    showToast({ title: 'Profile updated', description: 'Your details and album defaults are now saved.', variant: 'success' });
     setProfileOpen(false);
   };
 
   const handleResetProfile = () => {
     resetProfile();
-    showToast({
-      title: 'Profile reset',
-      description: 'Reverted to the default profile preferences.',
-      variant: 'success',
-    });
+    showToast({ title: 'Profile reset', description: 'Reverted to the default profile preferences.', variant: 'success' });
     setProfileOpen(false);
   };
 
@@ -249,9 +214,7 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
         <DialogContent className="max-h-[min(680px,calc(100vh-2rem))] w-full max-w-[min(560px,calc(100vw-2rem))] overflow-y-auto rounded-3xl border border-border/70 bg-card px-4 py-6 shadow-lg sm:max-h-[80vh] sm:px-6">
           <DialogHeader className="space-y-2">
             <DialogTitle>Profile & defaults</DialogTitle>
-            <DialogDescription>
-              Personalize your profile photo, bio, and default album visibility before sharing to WhatsApp.
-            </DialogDescription>
+            <DialogDescription>Personalize your profile photo, bio, and default album visibility before sharing to WhatsApp.</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-6">
@@ -438,3 +401,5 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
     </header>
   );
 }
+
+export default NavBar;
