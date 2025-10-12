@@ -1,119 +1,196 @@
-import { Suspense } from 'react';
-import { notFound } from 'next/navigation';
+import { redirect, notFound } from 'next/navigation';
+import type { User } from '@supabase/supabase-js';
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { getServerClient } from '@/lib/supabaseServer';
-import { isSupabaseConfigured } from '@/lib/env';
+import Providers from '@/components/Providers';
+import AlbumDetailShell, { type AlbumCollaborator } from '@/components/AlbumDetailShell';
+import { isSupabaseConfigured, resolveAppUrl } from '@/lib/env';
 import { mockFindAlbumBySlug } from '@/lib/mockDb';
-import type { Database } from '@/types/database';
+import { getServerClient } from '@/lib/supabaseServer';
 
-interface AlbumPageProps {
-  params: {
-    slug: string;
-  };
-}
+type AlbumVisibility = 'public' | 'unlisted' | 'private';
 
-type AlbumVisibility = Database['public']['Tables']['albums']['Row']['visibility'];
-type AlbumSummary = Pick<Database['public']['Tables']['albums']['Row'], 'id' | 'name' | 'visibility'>;
-
-const VISIBILITY_LABEL: Record<AlbumVisibility, string> = {
-  public: 'Public',
-  unlisted: 'Unlisted',
-  private: 'Private',
+type AlbumRow = {
+  id: string;
+  owner_id: string;
+  name: string;
+  slug: string;
+  visibility: AlbumVisibility;
 };
 
-export default async function AlbumPage({ params }: AlbumPageProps) {
-  let album: AlbumSummary | null = null;
+type CollaboratorRow = {
+  user_id: string;
+};
 
-  if (isSupabaseConfigured()) {
-    const supabase = getServerClient();
-    const { data, error } = await supabase
-      .from('albums')
-      .select('id, name, visibility')
-      .eq('slug', params.slug)
-      .maybeSingle<AlbumSummary>();
+type ProfileRow = {
+  id: string;
+  name: string | null;
+};
 
-    if (error) {
-      if (error.code === 'PGRST116' || error.code === '42501') {
-        notFound();
-      }
+function resolveUserLabel(user: User): string | null {
+  const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const fullName = typeof metadata.full_name === 'string' ? metadata.full_name : undefined;
+  if (fullName && fullName.trim().length > 0) {
+    return fullName.trim();
+  }
 
-      throw error;
+  const displayName = typeof metadata.display_name === 'string' ? metadata.display_name : undefined;
+  if (displayName && displayName.trim().length > 0) {
+    return displayName.trim();
+  }
+
+  if (user.email && user.email.length > 0) {
+    return user.email;
+  }
+
+  if (user.phone && user.phone.length > 0) {
+    return user.phone;
+  }
+
+  return null;
+}
+
+export default async function AlbumPage({ params }: { params: { slug: string } }) {
+  const baseUrl = resolveAppUrl().replace(/\/$/, '');
+
+  if (!isSupabaseConfigured()) {
+    const album = mockFindAlbumBySlug(params.slug);
+    if (!album) {
+      notFound();
     }
 
-    album = data ?? null;
-  } else {
-    const mock = mockFindAlbumBySlug(params.slug);
-    if (mock) {
-      album = { id: mock.id, name: mock.name, visibility: mock.visibility };
+    const collaborators: AlbumCollaborator[] = [
+      {
+        id: album.ownerId,
+        name: 'Demo Owner',
+        role: 'owner',
+        email: 'demo@example.com',
+      },
+    ];
+
+    return (
+      <Providers>
+        <AlbumDetailShell
+          albumId={album.id}
+          initialName={album.name}
+          initialVisibility={album.visibility}
+          initialSlug={album.slug}
+          canEdit
+          isOwner
+          userLabel="Demo Owner"
+          collaborators={collaborators}
+          publicBaseUrl={baseUrl}
+          isMockMode
+          viewerId={album.ownerId}
+        />
+      </Providers>
+    );
+  }
+
+  const supabase = getServerClient();
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    throw userError;
+  }
+
+  if (!user) {
+    redirect('/login');
+  }
+
+  const { data: album, error: albumError } = await supabase
+    .from('albums')
+    .select('id, owner_id, name, slug, visibility')
+    .eq('slug', params.slug)
+    .maybeSingle<AlbumRow>();
+
+  if (albumError) {
+    if (albumError.code === 'PGRST116' || albumError.code === '42501') {
+      notFound();
     }
+
+    throw albumError;
   }
 
   if (!album) {
     notFound();
   }
 
+  const { data: collaboratorRows, error: collaboratorError } = await supabase
+    .from('album_collaborators' as const)
+    .select('user_id')
+    .eq('album_id', album.id);
+
+  if (collaboratorError) {
+    throw collaboratorError;
+  }
+
+  const collaboratorIds = new Set<string>((collaboratorRows as CollaboratorRow[] | null)?.map((row) => row.user_id) ?? []);
+  const isOwner = album.owner_id === user.id;
+  const canEdit = isOwner || collaboratorIds.has(user.id);
+
+  if (!canEdit && album.visibility === 'private') {
+    notFound();
+  }
+
+  const profileIds = new Set<string>([album.owner_id, ...collaboratorIds]);
+  let profileMap = new Map<string, ProfileRow>();
+
+  if (profileIds.size > 0) {
+    const { data: profileRows, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, name')
+      .in('id', Array.from(profileIds));
+
+    if (profileError) {
+      throw profileError;
+    }
+
+    profileMap = new Map<string, ProfileRow>(
+      ((profileRows as ProfileRow[] | null) ?? []).map((row) => [row.id, row]),
+    );
+  }
+
+  const collaborators: AlbumCollaborator[] = [
+    {
+      id: album.owner_id,
+      name: profileMap.get(album.owner_id)?.name ?? resolveUserLabel(user) ?? album.owner_id,
+      role: 'owner',
+      email: isOwner ? user.email ?? undefined : undefined,
+    },
+  ];
+
+  for (const collaboratorId of collaboratorIds) {
+    if (collaboratorId === album.owner_id) {
+      continue;
+    }
+
+    const profile = profileMap.get(collaboratorId);
+    collaborators.push({
+      id: collaboratorId,
+      name: profile?.name ?? collaboratorId,
+      role: 'collaborator',
+      email: undefined,
+    });
+  }
+
   return (
-    <div className="space-y-10 pb-16">
-      <header className="flex flex-col gap-4 rounded-3xl border border-border bg-card p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{album.name}</h1>
-            <Badge className="rounded-full bg-secondary/80 text-secondary-foreground">
-              {VISIBILITY_LABEL[album.visibility]}
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">Album management tools will appear here soon.</p>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <Button variant="outline" className="rounded-full" type="button">
-            Share
-          </Button>
-          <Button className="rounded-full" type="button">
-            Edit
-          </Button>
-        </div>
-      </header>
-
-      <Tabs defaultValue="stickers" className="space-y-6">
-        <TabsList className="w-full justify-start gap-2 overflow-x-auto rounded-full bg-muted/60 p-1">
-          <TabsTrigger value="stickers" className="rounded-full px-4 py-2">
-            Stickers
-          </TabsTrigger>
-          <TabsTrigger value="pack" className="rounded-full px-4 py-2">
-            Pack
-          </TabsTrigger>
-          <TabsTrigger value="share" className="rounded-full px-4 py-2">
-            Share
-          </TabsTrigger>
-          <TabsTrigger value="settings" className="rounded-full px-4 py-2">
-            Settings
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="stickers" className="focus-visible:outline-none">
-          <PlaceholderPanel label="Stickers tools coming soon." />
-        </TabsContent>
-        <TabsContent value="pack" className="focus-visible:outline-none">
-          <PlaceholderPanel label="Pack builder will be available shortly." />
-        </TabsContent>
-        <TabsContent value="share" className="focus-visible:outline-none">
-          <PlaceholderPanel label="Share options will appear here." />
-        </TabsContent>
-        <TabsContent value="settings" className="focus-visible:outline-none">
-          <PlaceholderPanel label="Album settings form coming soon." />
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-}
-
-function PlaceholderPanel({ label }: { label: string }) {
-  return (
-    <div className="rounded-3xl border border-dashed border-muted-foreground/30 bg-card/40 p-10 text-center text-sm text-muted-foreground">
-      <Suspense fallback={null}>{label}</Suspense>
-    </div>
+    <Providers>
+      <AlbumDetailShell
+        albumId={album.id}
+        initialName={album.name}
+        initialVisibility={album.visibility}
+        initialSlug={album.slug}
+        canEdit={canEdit}
+        isOwner={isOwner}
+        userLabel={resolveUserLabel(user)}
+        collaborators={collaborators}
+        publicBaseUrl={baseUrl}
+        isMockMode={false}
+        viewerId={user.id}
+      />
+    </Providers>
   );
 }
