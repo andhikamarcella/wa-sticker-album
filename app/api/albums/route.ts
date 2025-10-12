@@ -157,11 +157,7 @@ export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured()) {
     const album = mockCreateAlbum(MOCK_OWNER_ID, name, visibility);
     return NextResponse.json({
-      id: album.id,
-      name: album.name,
-      slug: album.slug,
-      visibility: album.visibility,
-      updatedAt: album.updatedAt,
+      id: album.id, name: album.name, slug: album.slug, visibility: album.visibility, updatedAt: album.updatedAt,
     });
   }
 
