@@ -70,9 +70,7 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
   const { profile, updateProfile, resetProfile, loaded } = useProfileStorage(userLabel ?? undefined);
 
   const displayName = useMemo(() => {
-    if (!loaded) {
-      return userLabel?.trim() || undefined;
-    }
+    if (!loaded) return userLabel?.trim() || undefined;
     return profile.displayName.trim() || userLabel?.trim() || undefined;
   }, [loaded, profile.displayName, userLabel]);
 
@@ -192,39 +190,34 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
   const profileVisibilityLabel = loaded ? (profile.visibility === 'private' ? 'Private' : 'Public') : undefined;
 
   return (
-    <header className="w-full px-4 py-4">
+    <header className="w-full px-4 py-4 sm:px-6">
       <div
         className={cn(
-          'mx-auto flex w-full max-w-6xl flex-col gap-4 rounded-3xl border border-border bg-card/80 p-3 shadow-sm backdrop-blur-sm transition-colors sm:p-4',
-          'md:flex-row md:items-center md:justify-between md:gap-6',
+          'mx-auto flex w-full max-w-6xl flex-col gap-4 rounded-3xl border border-border/70 bg-card/80 p-4 shadow-sm backdrop-blur-sm transition-colors sm:p-5',
         )}
       >
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-col">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-1">
             <span className="text-sm font-semibold uppercase tracking-widest text-primary">Sticker Album</span>
             <span className="text-xs text-muted-foreground">Organize and share your WhatsApp stickers</span>
             {displayName ? (
-              <span className="mt-1 text-xs font-medium text-foreground/70">
+              <span className="mt-1 block text-xs font-medium text-foreground/70">
                 Hi, {displayName}
                 {profileVisibilityLabel ? ` · ${profileVisibilityLabel} profile` : ''}
               </span>
             ) : null}
           </div>
-          <div className="flex items-center gap-2 md:hidden">
-            <button
-              type="button"
-              onClick={() => setProfileOpen(true)}
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-border/40 bg-muted/40 text-sm font-medium text-muted-foreground transition hover:border-border hover:bg-muted"
-              aria-label="Open profile settings"
-            >
-              {avatarNode}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setProfileOpen(true)}
+            className="flex h-10 w-10 items-center justify-center self-start rounded-full border border-border/40 bg-muted/40 text-sm font-medium text-muted-foreground transition hover:border-border hover:bg-muted sm:self-auto"
+            aria-label="Open profile settings"
+          >
+            {avatarNode}
+          </button>
         </div>
-        <form
-          onSubmit={handleSearchSubmit}
-          className="flex w-full flex-col gap-3 sm:flex-1 sm:flex-row sm:items-center sm:gap-4"
-        >
+
+        <form onSubmit={handleSearchSubmit} className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -237,29 +230,27 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
               spellCheck={false}
             />
           </div>
-          <div className="hidden items-center gap-2 md:flex">
-            <button
-              type="button"
-              onClick={() => setProfileOpen(true)}
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-border/40 bg-muted/40 text-sm font-medium text-muted-foreground transition hover:border-border hover:bg-muted"
-              aria-label="Open profile settings"
-            >
-              {avatarNode}
-            </button>
-          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-2xl px-4 py-2 sm:hidden"
+            onClick={() => setProfileOpen(true)}
+          >
+            Manage profile
+          </Button>
         </form>
       </div>
 
-        <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
-          <DialogContent className="max-h-[calc(100vh-2rem)] w-full max-w-[calc(100vw-2rem)] overflow-y-auto rounded-3xl p-0 sm:max-h-none sm:max-w-xl sm:p-6">
-            <DialogHeader className="px-4 pt-4 sm:px-0 sm:pt-0">
-              <DialogTitle>Profile & defaults</DialogTitle>
-              <DialogDescription>
-                Personalize your profile photo, bio, and default album visibility before sharing to WhatsApp.
-              </DialogDescription>
-            </DialogHeader>
+      <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
+        <DialogContent className="max-h-[min(680px,calc(100vh-2rem))] w-full max-w-[min(560px,calc(100vw-2rem))] overflow-y-auto rounded-3xl border border-border/70 bg-card px-4 py-6 shadow-lg sm:max-h-[80vh] sm:px-6">
+          <DialogHeader className="space-y-2">
+            <DialogTitle>Profile & defaults</DialogTitle>
+            <DialogDescription>
+              Personalize your profile photo, bio, and default album visibility before sharing to WhatsApp.
+            </DialogDescription>
+          </DialogHeader>
 
-            <div className="space-y-6 px-4 pb-6 sm:px-0">
+          <div className="space-y-6">
             {!loaded ? (
               <div className="space-y-4">
                 <div className="flex items-center gap-4">
@@ -274,7 +265,7 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
               </div>
             ) : (
               <form onSubmit={handleProfileSubmit} className="space-y-6">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                   <div className="relative h-20 w-20 overflow-hidden rounded-full border border-dashed border-border">
                     {avatarPreview ? (
                       <img src={avatarPreview} alt="Profile avatar preview" className="h-full w-full object-cover" />
@@ -304,7 +295,11 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
                         className="sr-only"
                         onChange={handleAvatarChange}
                       />
-                      <Button type="button" className="rounded-2xl gap-2" variant="outline" onClick={handleAvatarPick}
+                      <Button
+                        type="button"
+                        className={cn('rounded-2xl gap-2', 'w-full sm:w-auto')}
+                        variant="outline"
+                        onClick={handleAvatarPick}
                         aria-label="Upload a new profile photo"
                       >
                         <Camera className="h-4 w-4" aria-hidden />
@@ -314,7 +309,7 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
                         <Button
                           type="button"
                           variant="ghost"
-                          className="rounded-2xl text-destructive hover:text-destructive"
+                          className="w-full rounded-2xl text-destructive hover:text-destructive sm:w-auto"
                           onClick={handleAvatarRemove}
                         >
                           <Trash2 className="mr-2 h-4 w-4" aria-hidden />
@@ -409,14 +404,24 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
                 </div>
 
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <Button type="button" variant="ghost" className="rounded-2xl text-sm" onClick={handleResetProfile}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full rounded-2xl text-sm sm:w-auto"
+                    onClick={handleResetProfile}
+                  >
                     Reset to defaults
                   </Button>
                   <div className="flex flex-col gap-2 sm:flex-row">
-                    <Button type="button" variant="ghost" className="rounded-2xl" onClick={() => setProfileOpen(false)}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="w-full rounded-2xl sm:w-auto"
+                      onClick={() => setProfileOpen(false)}
+                    >
                       Cancel
                     </Button>
-                    <Button type="submit" className="rounded-2xl">
+                    <Button type="submit" className="w-full rounded-2xl sm:w-auto">
                       Save changes
                     </Button>
                   </div>
@@ -429,3 +434,5 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
     </header>
   );
 }
+
+export default NavBar;

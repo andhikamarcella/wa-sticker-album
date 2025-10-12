@@ -33,7 +33,6 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
   const albumId = params.id;
 
-  // Mock fallback saat Supabase tidak dikonfigurasi
   if (!isSupabaseConfigured()) {
     const existingAlbum = mockGetAlbum(albumId);
     if (!existingAlbum) return NextResponse.json({ error: 'Album not found' }, { status: 404 });
