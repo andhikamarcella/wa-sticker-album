@@ -4,12 +4,7 @@ import { z } from 'zod';
 
 import { getServerClient, type SupabaseServerClient } from '@/lib/supabaseServer';
 import { isSupabaseConfigured } from '@/lib/env';
-import {
-  mockCreateAlbum,
-  mockListAlbumsByOwner,
-  mockListStickers,
-  type MockAlbum,
-} from '@/lib/mockDb';
+import { mockCreateAlbum, mockListAlbumsByOwner, mockListStickers, type MockAlbum } from '@/lib/mockDb';
 import { slugify } from '@/lib/slug';
 
 const createAlbumSchema = z.object({
@@ -29,10 +24,7 @@ type AlbumRow = {
   updated_at: string | null;
 };
 
-type StickerRow = {
-  thumb_url: string | null;
-  file_url: string | null;
-};
+type StickerRow = { thumb_url: string | null; file_url: string | null };
 
 type ListResponse = {
   data: Array<{
@@ -53,40 +45,36 @@ export async function GET(request: NextRequest) {
   const scopeResult = scopeSchema.safeParse(scopeParam);
   const scope = scopeResult.success ? scopeResult.data : 'all';
 
+  // Fallback dev
   if (!isSupabaseConfigured()) {
     const ownerId = 'local-user';
     const normalizedSearch = searchQuery.toLowerCase();
-    const ownedAlbums = mockListAlbumsByOwner(ownerId);
+    const owned = mockListAlbumsByOwner(ownerId);
     let albums: MockAlbum[] = [];
 
-    if (scope === 'owned' || scope === 'all') {
-      albums = ownedAlbums;
-    }
-
-    if (scope === 'shared') {
-      albums = [];
-    }
+    if (scope === 'owned' || scope === 'all') albums = owned;
+    if (scope === 'shared') albums = [];
 
     if (normalizedSearch) {
-      albums = albums.filter((album) => album.name.toLowerCase().includes(normalizedSearch));
+      albums = albums.filter((a) => a.name.toLowerCase().includes(normalizedSearch));
     }
 
-    const detailedAlbums = albums
-      .map((album) => {
-        const stickers = mockListStickers(album.id);
+    const detailed = albums
+      .map((a) => {
+        const stickers = mockListStickers(a.id);
         return {
-          id: album.id,
-          name: album.name,
-          slug: album.slug,
-          visibility: album.visibility,
-          updatedAt: album.updatedAt,
+          id: a.id,
+          name: a.name,
+          slug: a.slug,
+          visibility: a.visibility,
+          updatedAt: a.updatedAt,
           stickersCount: stickers.length,
-          thumbnails: stickers.slice(0, 6).map((item) => item.thumbUrl || item.fileUrl),
+          thumbnails: stickers.slice(0, 6).map((s) => s.thumbUrl || s.fileUrl),
         };
       })
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
-    return NextResponse.json<ListResponse>({ data: detailedAlbums });
+    return NextResponse.json<ListResponse>({ data: detailed });
   }
 
   const supabase = getServerClient();
@@ -95,38 +83,22 @@ export async function GET(request: NextRequest) {
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
-
-  if (userError) {
-    return NextResponse.json({ error: userError.message }, { status: 401 });
-  }
-
-  if (!user) {
-    return NextResponse.json<ListResponse>({ data: [] });
-  }
+  if (userError) return NextResponse.json({ error: userError.message }, { status: 401 });
+  if (!user) return NextResponse.json<ListResponse>({ data: [] });
 
   const ownedAlbums = await fetchOwnedAlbums(supabase, user.id, searchQuery);
-  if (ownedAlbums.error) {
-    return NextResponse.json({ error: ownedAlbums.error }, { status: 500 });
-  }
+  if (ownedAlbums.error) return NextResponse.json({ error: ownedAlbums.error }, { status: 500 });
 
   const sharedAlbums = await fetchSharedAlbums(supabase, user.id, searchQuery);
-  if (sharedAlbums.error) {
-    return NextResponse.json({ error: sharedAlbums.error }, { status: 500 });
-  }
+  if (sharedAlbums.error) return NextResponse.json({ error: sharedAlbums.error }, { status: 500 });
 
   let albums: AlbumRow[] = [];
-  if (scope === 'owned') {
-    albums = ownedAlbums.albums;
-  } else if (scope === 'shared') {
-    albums = sharedAlbums.albums;
-  } else {
+  if (scope === 'owned') albums = ownedAlbums.albums;
+  else if (scope === 'shared') albums = sharedAlbums.albums;
+  else {
     const merged = new Map<string, AlbumRow>();
-    ownedAlbums.albums.forEach((album) => {
-      merged.set(album.id, album);
-    });
-    sharedAlbums.albums.forEach((album) => {
-      merged.set(album.id, album);
-    });
+    ownedAlbums.albums.forEach((a) => merged.set(a.id, a));
+    sharedAlbums.albums.forEach((a) => merged.set(a.id, a));
     albums = Array.from(merged.values()).sort((a, b) => {
       const aTime = new Date(a.updated_at ?? a.created_at ?? 0).getTime();
       const bTime = new Date(b.updated_at ?? b.created_at ?? 0).getTime();
@@ -148,7 +120,6 @@ export async function GET(request: NextRequest) {
           thumbnails: [],
         };
       }
-
       return {
         id: album.id,
         name: album.name,
@@ -167,15 +138,12 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const parsed = createAlbumSchema.safeParse(body ?? {});
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  }
-
+  // Fallback dev
   if (!isSupabaseConfigured()) {
     const ownerId = 'local-user';
     const album = mockCreateAlbum(ownerId, parsed.data.name, parsed.data.visibility ?? 'private');
-
     return NextResponse.json({
       id: album.id,
       name: album.name,
@@ -192,14 +160,8 @@ export async function POST(request: NextRequest) {
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
-
-  if (userError) {
-    return NextResponse.json({ error: userError.message }, { status: 401 });
-  }
-
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  if (userError) return NextResponse.json({ error: userError.message }, { status: 401 });
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const baseSlug = slugify(parsed.data.name) || `album-${Math.random().toString(36).slice(2, 8)}`;
   const slug = await ensureUniqueSlug(client, baseSlug);
@@ -217,17 +179,21 @@ export async function POST(request: NextRequest) {
     ])
     .select('id, name, slug, visibility, updated_at, created_at')
     .single()) as {
-    data: { id: string; name: string; slug: string; visibility: AlbumRow['visibility']; updated_at: string | null; created_at: string | null } | null;
+    data:
+      | {
+          id: string;
+          name: string;
+          slug: string;
+          visibility: AlbumRow['visibility'];
+          updated_at: string | null;
+          created_at: string | null;
+        }
+      | null;
     error: PostgrestError | null;
   };
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  if (!data) {
-    return NextResponse.json({ error: 'Failed to create album' }, { status: 500 });
-  }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!data) return NextResponse.json({ error: 'Failed to create album' }, { status: 500 });
 
   return NextResponse.json({
     id: data.id,
@@ -241,17 +207,11 @@ export async function POST(request: NextRequest) {
 async function ensureUniqueSlug(client: SupabaseClient<any>, baseSlug: string) {
   let candidate = baseSlug;
   let suffix = 1;
-
   while (true) {
     const { data, error } = await client.from('albums').select('id').eq('slug', candidate).limit(1).maybeSingle();
-    if (error && error.code !== 'PGRST116') {
-      throw new Error(error.message);
-    }
-    if (!data) {
-      return candidate;
-    }
-    candidate = `${baseSlug}-${suffix}`;
-    suffix += 1;
+    if (error && error.code !== 'PGRST116') throw new Error(error.message);
+    if (!data) return candidate;
+    candidate = `${baseSlug}-${suffix++}`;
   }
 }
 
@@ -278,14 +238,10 @@ async function fetchAlbumStats(client: SupabaseServerClient, albumId: string) {
   }
 
   const thumbnails = (thumbnailsResponse.data ?? [])
-    .map((item) => item.thumb_url ?? item.file_url)
-    .filter((item): item is string => typeof item === 'string' && item.length > 0);
+    .map((i) => i.thumb_url ?? i.file_url)
+    .filter((u): u is string => typeof u === 'string' && u.length > 0);
 
-  return {
-    error: null,
-    thumbnails,
-    count: countResponse.count ?? thumbnails.length,
-  };
+  return { error: null, thumbnails, count: countResponse.count ?? thumbnails.length };
 }
 
 async function fetchOwnedAlbums(client: SupabaseServerClient, ownerId: string, search: string) {
@@ -296,16 +252,10 @@ async function fetchOwnedAlbums(client: SupabaseServerClient, ownerId: string, s
     .eq('owner_id', ownerId)
     .order('updated_at', { ascending: false, nullsFirst: false });
 
-  if (search) {
-    query = query.ilike('name', `%${search}%`);
-  }
+  if (search) query = query.ilike('name', `%${search}%`);
 
   const { data, error } = (await query) as { data: AlbumRow[] | null; error: PostgrestError | null };
-
-  if (error) {
-    return { albums: [] as AlbumRow[], error: error.message };
-  }
-
+  if (error) return { albums: [] as AlbumRow[], error: error.message };
   return { albums: data ?? [], error: null };
 }
 
@@ -318,28 +268,23 @@ async function fetchSharedAlbums(client: SupabaseServerClient, userId: string, s
     .neq('owner_id', userId)
     .order('updated_at', { ascending: false, nullsFirst: false });
 
-  if (search) {
-    query = query.ilike('name', `%${search}%`);
-  }
+  if (search) query = query.ilike('name', `%${search}%`);
 
   const { data, error } = (await query) as {
     data: (AlbumRow & { album_collaborators: Array<{ user_id: string }> })[] | null;
     error: PostgrestError | null;
   };
 
-  if (error) {
-    return { albums: [] as AlbumRow[], error: error.message };
-  }
+  if (error) return { albums: [] as AlbumRow[], error: error.message };
 
-  const albums = (data ?? []).map((album) => ({
-    id: album.id,
-    owner_id: album.owner_id,
-    name: album.name,
-    slug: album.slug,
-    visibility: album.visibility,
-    created_at: album.created_at,
-    updated_at: album.updated_at,
+  const albums = (data ?? []).map((a) => ({
+    id: a.id,
+    owner_id: a.owner_id,
+    name: a.name,
+    slug: a.slug,
+    visibility: a.visibility,
+    created_at: a.created_at,
+    updated_at: a.updated_at,
   }));
-
   return { albums, error: null };
 }

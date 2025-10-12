@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-
 import { slugify } from '@/lib/slug';
 
 export type MockAlbumVisibility = 'public' | 'unlisted' | 'private';
@@ -56,7 +55,6 @@ function getStore(): MockDb {
       packs: new Map(),
     };
   }
-
   return globalStore.__waStickerMockDb;
 }
 
@@ -70,10 +68,8 @@ function ensureUniqueSlug(baseSlug: string, excludeId?: string): string {
     Array.from(db.albums.values()).some((album) => album.slug === slug && album.id !== excludeId);
 
   while (hasConflict(candidate)) {
-    candidate = `${base}-${suffix}`;
-    suffix += 1;
+    candidate = `${base}-${suffix++}`;
   }
-
   return candidate;
 }
 
@@ -103,10 +99,7 @@ export function mockUpdateAlbum(
 ): MockAlbum | null {
   const db = getStore();
   const current = db.albums.get(id);
-
-  if (!current) {
-    return null;
-  }
+  if (!current) return null;
 
   const next: MockAlbum = { ...current };
 
@@ -132,23 +125,14 @@ export function mockUpdateAlbum(
 export function mockDeleteAlbum(id: string): boolean {
   const db = getStore();
   const existed = db.albums.delete(id);
-
-  if (!existed) {
-    return false;
-  }
+  if (!existed) return false;
 
   for (const sticker of Array.from(db.stickers.values())) {
-    if (sticker.albumId === id) {
-      db.stickers.delete(sticker.id);
-    }
+    if (sticker.albumId === id) db.stickers.delete(sticker.id);
   }
-
   for (const pack of Array.from(db.packs.values())) {
-    if (pack.albumId === id) {
-      db.packs.delete(pack.id);
-    }
+    if (pack.albumId === id) db.packs.delete(pack.id);
   }
-
   return true;
 }
 
@@ -166,11 +150,8 @@ export function mockListAlbumsByVisibility(visibility: MockAlbumVisibility[]): M
 export function mockFindAlbumBySlug(slug: string): MockAlbum | null {
   const db = getStore();
   for (const album of db.albums.values()) {
-    if (album.slug === slug) {
-      return album;
-    }
+    if (album.slug === slug) return album;
   }
-
   return null;
 }
 
@@ -183,13 +164,7 @@ export function mockListStickers(albumId: string): MockSticker[] {
   const db = getStore();
   return Array.from(db.stickers.values())
     .filter((sticker) => sticker.albumId === albumId)
-    .sort((a, b) => {
-      if (a.sortIndex === b.sortIndex) {
-        return a.createdAt.localeCompare(b.createdAt);
-      }
-
-      return a.sortIndex - b.sortIndex;
-    });
+    .sort((a, b) => (a.sortIndex === b.sortIndex ? a.createdAt.localeCompare(b.createdAt) : a.sortIndex - b.sortIndex));
 }
 
 export function mockAddStickers(
@@ -216,7 +191,6 @@ export function mockAddStickers(
       sortIndex: lastSort,
       createdAt,
     };
-
     db.stickers.set(sticker.id, sticker);
     inserted.push(sticker);
   }
@@ -270,11 +244,7 @@ export function mockDeleteStickers(albumId: string, ids: string[]): number {
 export function mockTouchAlbum(id: string): void {
   const db = getStore();
   const album = db.albums.get(id);
-
-  if (!album) {
-    return;
-  }
-
+  if (!album) return;
   album.updatedAt = new Date().toISOString();
   db.albums.set(id, album);
 }
@@ -316,18 +286,9 @@ export function mockGetPack(id: string): MockPack | null {
 export function mockPublishPack(id: string, publicUrl: string, waShareUrl: string): MockPack | null {
   const db = getStore();
   const pack = db.packs.get(id);
+  if (!pack) return null;
 
-  if (!pack) {
-    return null;
-  }
-
-  const next: MockPack = {
-    ...pack,
-    publicUrl,
-    waShareUrl,
-    updatedAt: new Date().toISOString(),
-  };
-
+  const next: MockPack = { ...pack, publicUrl, waShareUrl, updatedAt: new Date().toISOString() };
   db.packs.set(id, next);
   mockTouchAlbum(pack.albumId);
   return next;
