@@ -27,39 +27,14 @@ type VisibilityOption<T extends string> = {
 };
 
 const profileVisibilityOptions: VisibilityOption<'public' | 'private'>[] = [
-  {
-    value: 'public',
-    label: 'Public profile',
-    description: 'Your name and avatar are visible to anyone with your shared album links.',
-    icon: <Globe2 className="h-4 w-4" aria-hidden />,
-  },
-  {
-    value: 'private',
-    label: 'Private profile',
-    description: 'Only collaborators you invite can see your profile details.',
-    icon: <Lock className="h-4 w-4" aria-hidden />,
-  },
+  { value: 'public', label: 'Public profile', description: 'Your name and avatar are visible to anyone with your shared album links.', icon: <Globe2 className="h-4 w-4" aria-hidden /> },
+  { value: 'private', label: 'Private profile', description: 'Only collaborators you invite can see your profile details.', icon: <Lock className="h-4 w-4" aria-hidden /> },
 ];
 
 const albumVisibilityOptions: VisibilityOption<'public' | 'unlisted' | 'private'>[] = [
-  {
-    value: 'public',
-    label: 'Public albums',
-    description: 'Albums are discoverable and can be shared broadly.',
-    icon: <Globe2 className="h-4 w-4" aria-hidden />,
-  },
-  {
-    value: 'unlisted',
-    label: 'Unlisted by default',
-    description: 'Albums require a link but are not listed publicly.',
-    icon: <Link2 className="h-4 w-4" aria-hidden />,
-  },
-  {
-    value: 'private',
-    label: 'Private albums',
-    description: 'Albums start locked and only collaborators can access them.',
-    icon: <Lock className="h-4 w-4" aria-hidden />,
-  },
+  { value: 'public', label: 'Public albums', description: 'Albums are discoverable and can be shared broadly.', icon: <Globe2 className="h-4 w-4" aria-hidden /> },
+  { value: 'unlisted', label: 'Unlisted by default', description: 'Albums require a link but are not listed publicly.', icon: <Link2 className="h-4 w-4" aria-hidden /> },
+  { value: 'private', label: 'Private albums', description: 'Albums start locked and only collaborators can access them.', icon: <Lock className="h-4 w-4" aria-hidden /> },
 ];
 
 const MAX_AVATAR_SIZE = 2 * 1024 * 1024; // 2MB
@@ -70,9 +45,7 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
   const { profile, updateProfile, resetProfile, loaded } = useProfileStorage(userLabel ?? undefined);
 
   const displayName = useMemo(() => {
-    if (!loaded) {
-      return userLabel?.trim() || undefined;
-    }
+    if (!loaded) return userLabel?.trim() || undefined;
     return profile.displayName.trim() || userLabel?.trim() || undefined;
   }, [loaded, profile.displayName, userLabel]);
 
@@ -159,21 +132,13 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
       defaultAlbumVisibility: draftAlbumVisibility,
     });
 
-    showToast({
-      title: 'Profile updated',
-      description: 'Your details and album defaults are now saved.',
-      variant: 'success',
-    });
+    showToast({ title: 'Profile updated', description: 'Your details and album defaults are now saved.', variant: 'success' });
     setProfileOpen(false);
   };
 
   const handleResetProfile = () => {
     resetProfile();
-    showToast({
-      title: 'Profile reset',
-      description: 'Reverted to the default profile preferences.',
-      variant: 'success',
-    });
+    showToast({ title: 'Profile reset', description: 'Reverted to the default profile preferences.', variant: 'success' });
     setProfileOpen(false);
   };
 
@@ -193,19 +158,14 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
 
   return (
     <header className="w-full px-4 py-4 sm:px-6">
-      <div
-        className={cn(
-          'mx-auto flex w-full max-w-6xl flex-col gap-4 rounded-3xl border border-border/70 bg-card/80 p-4 shadow-sm backdrop-blur-sm transition-colors sm:p-5',
-        )}
-      >
+      <div className={cn('mx-auto flex w-full max-w-6xl flex-col gap-4 rounded-3xl border border-border/70 bg-card/80 p-4 shadow-sm backdrop-blur-sm transition-colors sm:p-5')}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 space-y-1">
             <span className="text-sm font-semibold uppercase tracking-widest text-primary">Sticker Album</span>
             <span className="text-xs text-muted-foreground">Organize and share your WhatsApp stickers</span>
             {displayName ? (
               <span className="mt-1 block text-xs font-medium text-foreground/70">
-                Hi, {displayName}
-                {profileVisibilityLabel ? ` · ${profileVisibilityLabel} profile` : ''}
+                Hi, {displayName}{profileVisibilityLabel ? ` · ${profileVisibilityLabel} profile` : ''}
               </span>
             ) : null}
           </div>
@@ -218,10 +178,8 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
             {avatarNode}
           </button>
         </div>
-        <form
-          onSubmit={handleSearchSubmit}
-          className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:gap-4"
-        >
+
+        <form onSubmit={handleSearchSubmit} className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -234,24 +192,17 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
               spellCheck={false}
             />
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            className="rounded-2xl px-4 py-2 sm:hidden"
-            onClick={() => setProfileOpen(true)}
-          >
+          <Button type="button" variant="outline" className="rounded-2xl px-4 py-2 sm:hidden" onClick={() => setProfileOpen(true)}>
             Manage profile
           </Button>
         </form>
       </div>
 
       <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
-        <DialogContent className="max-h-[min(680px,calc(100vh-2rem))] w-full max-w-[min(560px,calc(100vw-2rem))] overflow-y-auto rounded-3xl border border-border/70 bg-card px-4 py-6 shadow-lg sm:max-h-[80vh] sm:px-6">
+        <DialogContent className="max-h-[min(680px,calc(100vh-2rem))] w-full max-w-[min(560px,calc(100vw-2rem))] overflow-y-auto rounded-3xl border border-border/70 bg-card px-4 py-6 shadow-lg sm:max-h[80vh] sm:px-6">
           <DialogHeader className="space-y-2">
             <DialogTitle>Profile & defaults</DialogTitle>
-            <DialogDescription>
-              Personalize your profile photo, bio, and default album visibility before sharing to WhatsApp.
-            </DialogDescription>
+            <DialogDescription>Personalize your profile photo, bio, and default album visibility before sharing to WhatsApp.</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-6">
@@ -287,35 +238,16 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
                   <div className="flex-1 space-y-2">
                     <div className="space-y-1">
                       <p className="text-sm font-semibold text-foreground">Profile photo</p>
-                      <p className="text-xs text-muted-foreground">
-                        Upload a square image (PNG, JPG, WEBP) under 2MB for the best sharing preview.
-                      </p>
+                      <p className="text-xs text-muted-foreground">Upload a square image (PNG, JPG, WEBP) under 2MB for the best sharing preview.</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        className="sr-only"
-                        onChange={handleAvatarChange}
-                      />
-                      <Button
-                        type="button"
-                        className={cn('rounded-2xl gap-2', 'w-full sm:w-auto')}
-                        variant="outline"
-                        onClick={handleAvatarPick}
-                        aria-label="Upload a new profile photo"
-                      >
+                      <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={handleAvatarChange} />
+                      <Button type="button" className={cn('rounded-2xl gap-2', 'w-full sm:w-auto')} variant="outline" onClick={handleAvatarPick} aria-label="Upload a new profile photo">
                         <Camera className="h-4 w-4" aria-hidden />
                         Upload photo
                       </Button>
                       {avatarPreview ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="w-full rounded-2xl text-destructive hover:text-destructive sm:w-auto"
-                          onClick={handleAvatarRemove}
-                        >
+                        <Button type="button" variant="ghost" className="w-full rounded-2xl text-destructive hover:text-destructive sm:w-auto" onClick={handleAvatarRemove}>
                           <Trash2 className="mr-2 h-4 w-4" aria-hidden />
                           Remove
                         </Button>
@@ -326,29 +258,13 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
                 </div>
 
                 <div className="space-y-2">
-                  <label htmlFor="profile-name" className="text-sm font-semibold text-foreground">
-                    Display name
-                  </label>
-                  <Input
-                    id="profile-name"
-                    value={draftName}
-                    onChange={(event) => setDraftName(event.target.value)}
-                    placeholder="Your name"
-                    className="rounded-2xl"
-                  />
+                  <label htmlFor="profile-name" className="text-sm font-semibold text-foreground">Display name</label>
+                  <Input id="profile-name" value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="Your name" className="rounded-2xl" />
                 </div>
 
                 <div className="space-y-2">
-                  <label htmlFor="profile-bio" className="text-sm font-semibold text-foreground">
-                    Bio
-                  </label>
-                  <Textarea
-                    id="profile-bio"
-                    value={draftBio}
-                    onChange={(event) => setDraftBio(event.target.value)}
-                    placeholder="Tell collaborators about this sticker collection."
-                    className="min-h-[120px] rounded-2xl"
-                  />
+                  <label htmlFor="profile-bio" className="text-sm font-semibold text-foreground">Bio</label>
+                  <Textarea id="profile-bio" value={draftBio} onChange={(e) => setDraftBio(e.target.value)} placeholder="Tell collaborators about this sticker collection." className="min-h-[120px] rounded-2xl" />
                 </div>
 
                 <div className="space-y-3">
@@ -361,10 +277,7 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
                           key={option.value}
                           type="button"
                           onClick={() => setDraftVisibility(option.value)}
-                          className={cn(
-                            'flex flex-col gap-1 rounded-2xl border border-border/70 p-3 text-left transition hover:border-border',
-                            active && 'border-primary/60 bg-primary/10 text-primary',
-                          )}
+                          className={cn('flex flex-col gap-1 rounded-2xl border border-border/70 p-3 text-left transition hover:border-border', active && 'border-primary/60 bg-primary/10 text-primary')}
                           aria-pressed={active}
                           aria-label={`Set profile visibility to ${option.label}`}
                         >
@@ -389,10 +302,7 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
                           key={option.value}
                           type="button"
                           onClick={() => setDraftAlbumVisibility(option.value)}
-                          className={cn(
-                            'flex flex-col gap-1 rounded-2xl border border-border/70 p-3 text-left transition hover:border-border',
-                            active && 'border-primary/60 bg-primary/10 text-primary',
-                          )}
+                          className={cn('flex flex-col gap-1 rounded-2xl border border-border/70 p-3 text-left transition hover:border-border', active && 'border-primary/60 bg-primary/10 text-primary')}
                           aria-pressed={active}
                           aria-label={`Set default album visibility to ${option.label}`}
                         >
@@ -408,21 +318,11 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
                 </div>
 
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="w-full rounded-2xl text-sm sm:w-auto"
-                    onClick={handleResetProfile}
-                  >
+                  <Button type="button" variant="ghost" className="w-full rounded-2xl text-sm sm:w-auto" onClick={handleResetProfile}>
                     Reset to defaults
                   </Button>
                   <div className="flex flex-col gap-2 sm:flex-row">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="w-full rounded-2xl sm:w-auto"
-                      onClick={() => setProfileOpen(false)}
-                    >
+                    <Button type="button" variant="ghost" className="w-full rounded-2xl sm:w-auto" onClick={() => setProfileOpen(false)}>
                       Cancel
                     </Button>
                     <Button type="submit" className="w-full rounded-2xl sm:w-auto">
@@ -438,3 +338,5 @@ export function NavBar({ searchValue, onSearchChange, userLabel }: NavBarProps) 
     </header>
   );
 }
+
+export default NavBar;

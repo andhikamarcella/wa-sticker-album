@@ -3,13 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
 import { isSupabaseConfigured } from '@/lib/env';
-import {
-  mockCreateAlbum,
-  mockListAlbumsByOwner,
-  mockListAlbumsSharedWith,
-  mockListStickers,
-  type MockAlbum,
-} from '@/lib/mockDb';
+import { mockCreateAlbum, mockListAlbumsByOwner, mockListAlbumsSharedWith, mockListStickers, type MockAlbum } from '@/lib/mockDb';
 import { getServerClient } from '@/lib/supabaseServer';
 import { slugify } from '@/lib/slug';
 import { SupabaseSchemaMissingError, shouldUseMockFromSupabaseError } from '@/lib/utils';
@@ -46,9 +40,7 @@ type AlbumListItem = {
   thumbnails: string[];
 };
 
-type AlbumStatsResult =
-  | { ok: true; thumbnails: string[]; count: number }
-  | { ok: false; error: string };
+type AlbumStatsResult = { ok: true; thumbnails: string[]; count: number } | { ok: false; error: string };
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
@@ -63,69 +55,36 @@ export async function GET(request: NextRequest) {
 
   try {
     const supabase = getServerClient();
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError) {
-      return NextResponse.json({ error: userError.message }, { status: 401 });
-    }
-
-    if (!user) {
-      return NextResponse.json<{ data: AlbumListItem[] }>({ data: [] });
-    }
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError) return NextResponse.json({ error: userError.message }, { status: 401 });
+    if (!user) return NextResponse.json<{ data: AlbumListItem[] }>({ data: [] });
 
     const [ownedResult, sharedResult] = await Promise.all([
       fetchOwnedAlbums(supabase, user.id, searchQuery),
       fetchSharedAlbums(supabase, user.id, searchQuery),
     ]);
 
-    if (!ownedResult.ok) {
-      return NextResponse.json({ error: ownedResult.error }, { status: 500 });
-    }
-    if (!sharedResult.ok) {
-      return NextResponse.json({ error: sharedResult.error }, { status: 500 });
-    }
+    if (!ownedResult.ok) return NextResponse.json({ error: ownedResult.error }, { status: 500 });
+    if (!sharedResult.ok) return NextResponse.json({ error: sharedResult.error }, { status: 500 });
 
     const selected = selectAlbums(scope, ownedResult.albums, sharedResult.albums);
-    const stats = await Promise.all(selected.map((album) => fetchAlbumStats(supabase, album.id)));
+    const stats = await Promise.all(selected.map((a) => fetchAlbumStats(supabase, a.id)));
 
-    const items: AlbumListItem[] = selected.map((album, index) => {
-      const stat = stats[index];
+    const items: AlbumListItem[] = selected.map((album, i) => {
+      const stat = stats[i];
       const fallbackUpdatedAt = album.updated_at ?? album.created_at ?? new Date().toISOString();
-
       if (!stat.ok) {
-        return {
-          id: album.id,
-          name: album.name,
-          slug: album.slug,
-          visibility: album.visibility,
-          updatedAt: fallbackUpdatedAt,
-          stickersCount: 0,
-          thumbnails: [],
-        };
+        return { id: album.id, name: album.name, slug: album.slug, visibility: album.visibility, updatedAt: fallbackUpdatedAt, stickersCount: 0, thumbnails: [] };
       }
-
-      return {
-        id: album.id,
-        name: album.name,
-        slug: album.slug,
-        visibility: album.visibility,
-        updatedAt: fallbackUpdatedAt,
-        stickersCount: stat.count,
-        thumbnails: stat.thumbnails,
-      };
+      return { id: album.id, name: album.name, slug: album.slug, visibility: album.visibility, updatedAt: fallbackUpdatedAt, stickersCount: stat.count, thumbnails: stat.thumbnails };
     });
 
     items.sort(sortByUpdatedAtDesc);
-
     return NextResponse.json<{ data: AlbumListItem[] }>({ data: items });
   } catch (error) {
     if (error instanceof SupabaseSchemaMissingError || shouldUseMockFromSupabaseError(error)) {
       return NextResponse.json<{ data: AlbumListItem[] }>({ data: buildMockAlbumItems(scope, searchQuery) });
     }
-
     console.error('Failed to list albums', error);
     return NextResponse.json({ error: 'Failed to list albums' }, { status: 500 });
   }
@@ -134,10 +93,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const payload = await request.json().catch(() => null);
   const parsed = createAlbumSchema.safeParse(payload ?? {});
-
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  }
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
   const visibility = parsed.data.visibility ?? 'private';
   const name = parsed.data.name;
@@ -145,61 +101,41 @@ export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured()) {
     const album = mockCreateAlbum(MOCK_OWNER_ID, name, visibility);
     return NextResponse.json({
-      id: album.id,
-      name: album.name,
-      slug: album.slug,
-      visibility: album.visibility,
-      updatedAt: album.updatedAt,
+      id: album.id, name: album.name, slug: album.slug, visibility: album.visibility, updatedAt: album.updatedAt,
     });
   }
 
   try {
     const supabase = getServerClient();
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError) {
-      return NextResponse.json({ error: userError.message }, { status: 401 });
-    }
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError) return NextResponse.json({ error: userError.message }, { status: 401 });
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const slugBase = slugify(name) || `album-${Math.random().toString(36).slice(2, 8)}`;
     const slug = await generateUniqueSlug(supabase, slugBase);
 
-    const insertResult = await insertAlbum(supabase, {
-      owner_id: user.id,
-      name,
-      visibility,
-      slug,
-    });
+    const inserted = await insertAlbum(supabase, { owner_id: user.id, name, visibility, slug });
 
     return NextResponse.json({
-      id: insertResult.id,
-      name: insertResult.name,
-      slug: insertResult.slug,
-      visibility: insertResult.visibility,
-      updatedAt: insertResult.updated_at ?? insertResult.created_at ?? new Date().toISOString(),
+      id: inserted.id,
+      name: inserted.name,
+      slug: inserted.slug,
+      visibility: inserted.visibility,
+      updatedAt: inserted.updated_at ?? inserted.created_at ?? new Date().toISOString(),
     });
   } catch (error) {
     if (error instanceof SupabaseSchemaMissingError || shouldUseMockFromSupabaseError(error)) {
       const album = mockCreateAlbum(MOCK_OWNER_ID, name, visibility);
       return NextResponse.json({
-        id: album.id,
-        name: album.name,
-        slug: album.slug,
-        visibility: album.visibility,
-        updatedAt: album.updatedAt,
+        id: album.id, name: album.name, slug: album.slug, visibility: album.visibility, updatedAt: album.updatedAt,
       });
     }
-
     console.error('Failed to create album', error);
     return NextResponse.json({ error: 'Failed to create album' }, { status: 500 });
   }
 }
+
+// ===== Helpers (mock builders, selectors, stats, slug & insert) =====
 
 function buildMockAlbumItems(scope: typeof DEFAULT_SCOPE | 'owned' | 'shared', searchQuery: string): AlbumListItem[] {
   const owned = mockListAlbumsByOwner(MOCK_OWNER_ID);
@@ -213,36 +149,24 @@ function selectMockAlbums(scope: string, owned: MockAlbum[], shared: MockAlbum[]
   if (scope === 'owned') return owned;
   if (scope === 'shared') return shared;
   const merged = new Map<string, MockAlbum>();
-  for (const album of owned) merged.set(album.id, album);
-  for (const album of shared) merged.set(album.id, album);
+  for (const a of owned) merged.set(a.id, a);
+  for (const a of shared) merged.set(a.id, a);
   return Array.from(merged.values());
 }
 
 function filterMockAlbums(albums: MockAlbum[], search: string): MockAlbum[] {
   if (!search) return albums;
   const normalized = search.toLowerCase();
-  return albums.filter((album) => album.name.toLowerCase().includes(normalized));
+  return albums.filter((a) => a.name.toLowerCase().includes(normalized));
 }
 
 function mapMockAlbumToListItem(album: MockAlbum): AlbumListItem {
   const stickers = mockListStickers(album.id);
-  const thumbnails = stickers
-    .slice(0, 6)
-    .map((sticker) => sticker.thumbUrl || sticker.fileUrl)
-    .filter((url): url is string => Boolean(url));
-
-  return {
-    id: album.id,
-    name: album.name,
-    slug: album.slug,
-    visibility: album.visibility,
-    updatedAt: album.updatedAt,
-    stickersCount: stickers.length,
-    thumbnails,
-  };
+  const thumbnails = stickers.slice(0, 6).map((s) => s.thumbUrl || s.fileUrl).filter((u): u is string => Boolean(u));
+  return { id: album.id, name: album.name, slug: album.slug, visibility: album.visibility, updatedAt: album.updatedAt, stickersCount: stickers.length, thumbnails };
 }
 
-function sortByUpdatedAtDesc(a: { updatedAt: string }, b: { updatedAt: string }): number {
+function sortByUpdatedAtDesc(a: { updatedAt: string }, b: { updatedAt: string }) {
   return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
 }
 
@@ -250,8 +174,8 @@ function selectAlbums(scope: string, owned: AlbumRow[], shared: AlbumRow[]): Alb
   if (scope === 'owned') return owned;
   if (scope === 'shared') return shared;
   const merged = new Map<string, AlbumRow>();
-  for (const album of owned) merged.set(album.id, album);
-  for (const album of shared) merged.set(album.id, album);
+  for (const a of owned) merged.set(a.id, a);
+  for (const a of shared) merged.set(a.id, a);
   return Array.from(merged.values());
 }
 
@@ -263,18 +187,13 @@ async function fetchOwnedAlbums(client: SupabaseClient<any>, ownerId: string, se
     .order('updated_at', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false, nullsFirst: false });
 
-  if (search) {
-    query = query.ilike('name', `%${search}%`);
-  }
+  if (search) query = query.ilike('name', `%${search}%`);
 
   const { data, error } = await query;
   if (error) {
-    if (shouldUseMockFromSupabaseError(error)) {
-      throw new SupabaseSchemaMissingError(error.message);
-    }
+    if (shouldUseMockFromSupabaseError(error)) throw new SupabaseSchemaMissingError(error.message);
     return { ok: false as const, error: error.message };
   }
-
   return { ok: true as const, albums: (data as AlbumRow[] | null) ?? [] };
 }
 
@@ -284,94 +203,54 @@ async function fetchSharedAlbums(client: SupabaseClient<any>, userId: string, se
     .select('albums!inner(id, owner_id, name, slug, visibility, created_at, updated_at)')
     .eq('user_id', userId);
 
-  if (search) {
-    query = query.ilike('albums.name', `%${search}%`);
-  }
+  if (search) query = query.ilike('albums.name', `%${search}%`);
 
   const { data, error } = await query;
-
   if (error) {
-    if (shouldUseMockFromSupabaseError(error)) {
-      throw new SupabaseSchemaMissingError(error.message);
-    }
+    if (shouldUseMockFromSupabaseError(error)) throw new SupabaseSchemaMissingError(error.message);
     return { ok: false as const, error: error.message };
   }
 
   const albums = new Map<string, AlbumRow>();
   const rows = ((data ?? []) as unknown) as Array<{ albums: AlbumRow | null }>;
-  for (const row of rows) {
-    if (row.albums) {
-      albums.set(row.albums.id, row.albums);
-    }
-  }
-
+  for (const row of rows) if (row.albums) albums.set(row.albums.id, row.albums);
   return { ok: true as const, albums: Array.from(albums.values()) };
 }
 
 async function fetchAlbumStats(client: SupabaseClient<any>, albumId: string): Promise<AlbumStatsResult> {
-  const { data: thumbnailsData, error: thumbnailsError } = await client
-    .from('stickers')
-    .select('thumb_url, file_url')
-    .eq('album_id', albumId)
-    .order('sort_index', { ascending: true })
-    .order('created_at', { ascending: true })
-    .limit(6);
-
-  if (thumbnailsError) {
-    if (shouldUseMockFromSupabaseError(thumbnailsError)) {
-      throw new SupabaseSchemaMissingError(thumbnailsError.message);
-    }
-    return { ok: false, error: thumbnailsError.message };
+  const { data: thumbs, error: thErr } = await client
+    .from('stickers').select('thumb_url, file_url').eq('album_id', albumId)
+    .order('sort_index', { ascending: true }).order('created_at', { ascending: true }).limit(6);
+  if (thErr) {
+    if (shouldUseMockFromSupabaseError(thErr)) throw new SupabaseSchemaMissingError(thErr.message);
+    return { ok: false, error: thErr.message };
   }
 
-  const { count, error: countError } = await client
-    .from('stickers')
-    .select('id', { count: 'exact', head: true })
-    .eq('album_id', albumId);
-
-  if (countError) {
-    if (shouldUseMockFromSupabaseError(countError)) {
-      throw new SupabaseSchemaMissingError(countError.message);
-    }
-    return { ok: false, error: countError.message };
+  const { count, error: cErr } = await client
+    .from('stickers').select('id', { count: 'exact', head: true }).eq('album_id', albumId);
+  if (cErr) {
+    if (shouldUseMockFromSupabaseError(cErr)) throw new SupabaseSchemaMissingError(cErr.message);
+    return { ok: false, error: cErr.message };
   }
 
-  const thumbnails = (thumbnailsData as Array<{ thumb_url: string | null; file_url: string | null }> | null) ?? [];
-  const sources = thumbnails
-    .map((item) => item.thumb_url || item.file_url)
-    .filter((url): url is string => Boolean(url));
+  const thumbnails = (thumbs as Array<{ thumb_url: string | null; file_url: string | null }> | null) ?? [];
+  const sources = thumbnails.map((i) => i.thumb_url || i.file_url).filter((u): u is string => Boolean(u));
 
-  return {
-    ok: true,
-    thumbnails: sources,
-    count: typeof count === 'number' ? count : sources.length,
-  };
+  return { ok: true, thumbnails: sources, count: typeof count === 'number' ? count : sources.length };
 }
 
 async function generateUniqueSlug(client: SupabaseClient<any>, base: string) {
   const normalizedBase = base.length > 0 ? base : 'album';
   let candidate = normalizedBase;
   let suffix = 1;
-
   while (true) {
-    const { data, error } = await client
-      .from('albums')
-      .select('id')
-      .eq('slug', candidate)
-      .limit(1);
-
+    const { data, error } = await client.from('albums').select('id').eq('slug', candidate).limit(1);
     if (error) {
-      if (shouldUseMockFromSupabaseError(error)) {
-        throw new SupabaseSchemaMissingError(error.message);
-      }
+      if (shouldUseMockFromSupabaseError(error)) throw new SupabaseSchemaMissingError(error.message);
       throw new Error(error.message);
     }
-
     const rows = (data as Array<{ id: string }> | null) ?? [];
-    if (rows.length === 0) {
-      return candidate;
-    }
-
+    if (rows.length === 0) return candidate;
     candidate = `${normalizedBase}-${suffix++}`;
   }
 }
@@ -379,32 +258,20 @@ async function generateUniqueSlug(client: SupabaseClient<any>, base: string) {
 async function insertAlbum(
   client: SupabaseClient<any>,
   payload: { owner_id: string; name: string; visibility: AlbumVisibility; slug: string },
-): Promise<AlbumRow> {
+) {
   const now = new Date().toISOString();
   const { data, error, status } = await client
     .from('albums')
-    .insert({
-      owner_id: payload.owner_id,
-      name: payload.name,
-      visibility: payload.visibility,
-      slug: payload.slug,
-      updated_at: now,
-    })
+    .insert({ owner_id: payload.owner_id, name: payload.name, visibility: payload.visibility, slug: payload.slug, updated_at: now })
     .select('id, owner_id, name, slug, visibility, created_at, updated_at')
     .single();
 
   if (error) {
-    if (shouldUseMockFromSupabaseError(error)) {
-      throw new SupabaseSchemaMissingError(error.message);
-    }
-    const enrichedError = new Error(error.message);
-    (enrichedError as Error & { status?: number }).status = status;
-    throw enrichedError;
+    if (shouldUseMockFromSupabaseError(error)) throw new SupabaseSchemaMissingError(error.message);
+    const err = new Error(error.message) as Error & { status?: number };
+    err.status = status;
+    throw err;
   }
-
-  if (!data) {
-    throw new Error('Failed to create album');
-  }
-
+  if (!data) throw new Error('Failed to create album');
   return data as AlbumRow;
 }
