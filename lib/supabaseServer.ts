@@ -40,7 +40,15 @@ export function getServerClient(): SupabaseServerClient {
 }
 
 export default async function getServerUser(): Promise<{ user: User | null }> {
-  const supabase = getServerClient();
-  const { data } = await supabase.auth.getUser();
-  return { user: data.user ?? null };
+  try {
+    const supabase = getServerClient();
+    const { data, error } = await supabase.auth.getUser();
+    if (error) {
+      if ((error as any).status === 401) return { user: null };
+      throw error;
+    }
+    return { user: data.user ?? null };
+  } catch {
+    return { user: null };
+  }
 }
