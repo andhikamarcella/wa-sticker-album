@@ -9,7 +9,7 @@ import type { AlbumVisibility } from '@/components/AlbumCard';
 import { isSupabaseConfigured, resolveAppUrl } from '@/lib/env';
 import { mockFindAlbumBySlug } from '@/lib/mockDb';
 import { getServerClient, type SupabaseServerClient } from '@/lib/supabaseServer';
-import { cn } from '@/lib/utils';
+import { cn, SupabaseSchemaMissingError, shouldUseMockFromSupabaseError } from '@/lib/utils';
 
 const MAX_MESSAGES = 200;
 
@@ -86,9 +86,7 @@ interface PublicAlbumData {
 async function fetchAlbumForMetadata(slug: string): Promise<{ name: string; visibility: AlbumVisibility } | null> {
   if (!isSupabaseConfigured()) {
     const album = mockFindAlbumBySlug(slug);
-    if (!album || album.visibility === 'private') {
-      return null;
-    }
+    if (!album || album.visibility === 'private') return null;
     return { name: album.name, visibility: album.visibility };
   }
 
@@ -100,25 +98,32 @@ async function fetchAlbumForMetadata(slug: string): Promise<{ name: string; visi
     .maybeSingle<Pick<AlbumRow, 'id' | 'name' | 'slug' | 'visibility'>>();
 
   if (error) {
-    if (error.code === 'PGRST116' || error.code === '42501') {
-      return null;
+    if (error.code === 'PGRST116' || error.code === '42501') return null;
+    if (shouldUseMockFromSupabaseError(error)) {
+      throw new SupabaseSchemaMissingError(error.message);
     }
     throw error;
   }
 
-  if (!data || data.visibility === 'private') {
-    return null;
-  }
-
+  if (!data || data.visibility === 'private') return null;
   return { name: data.name, visibility: data.visibility };
 }
 
-export async function generateMetadata({
-  params,
-}: {
-  params: { slug: string };
-}): Promise<Metadata> {
-  const album = await fetchAlbumForMetadata(params.slug);
+export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
+  let album: { name: string; visibility: AlbumVisibility } | null = null;
+
+  try {
+    album = await fetchAlbumForMetadata(params.slug);
+  } catch (error) {
+    if (error instanceof SupabaseSchemaMissingError || shouldUseMockFromSupabaseError(error)) {
+      const mockAlbum = mockFindAlbumBySlug(params.slug);
+      album = mockAlbum && mockAlbum.visibility !== 'private'
+        ? { name: mockAlbum.name, visibility: mockAlbum.visibility }
+        : null;
+    } else {
+      throw error;
+    }
+  }
 
   if (!album) {
     return { title: 'Album tidak ditemukan · WA Sticker Album', robots: { index: false, follow: false } };
@@ -138,138 +143,133 @@ export default async function AlbumPage({ params }: { params: { slug: string } }
     return renderMockAlbum(params.slug);
   }
 
-  const supabase = getServerClient();
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
+  try {
+    const supabase = getServerClient();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError) throw userError;
 
-  if (userError) {
-    throw userError;
-  }
+    const { data: album, error: albumError } = await supabase
+      .from('albums')
+      .select('id, owner_id, name, slug, visibility')
+      .eq('slug', params.slug)
+      .maybeSingle<AlbumRow>();
 
-  const { data: album, error: albumError } = await supabase
-    .from('albums')
-    .select('id, owner_id, name, slug, visibility')
-    .eq('slug', params.slug)
-    .maybeSingle<AlbumRow>();
-
-  if (albumError) {
-    if (albumError.code === 'PGRST116' || albumError.code === '42501') {
-      notFound();
-    }
-    throw albumError;
-  }
-
-  if (!album || album.visibility === 'private') {
-    notFound();
-  }
-
-  const baseUrl = resolveAppUrl().replace(/\/$/, '');
-
-  const collaboratorIds = new Set<string>();
-  let collaborators: AlbumCollaborator[] = [];
-  let isOwner = false;
-  let canEdit = false;
-
-  if (user) {
-    const { data: collaboratorRows, error: collaboratorError } = await supabase
-      .from('album_collaborators' as const)
-      .select('user_id')
-      .eq('album_id', album.id);
-
-    if (collaboratorError) {
-      throw collaboratorError;
+    if (albumError) {
+      if (albumError.code === 'PGRST116' || albumError.code === '42501') notFound();
+      if (shouldUseMockFromSupabaseError(albumError)) throw new SupabaseSchemaMissingError(albumError.message);
+      throw albumError;
     }
 
-    for (const row of (collaboratorRows as CollaboratorRow[] | null) ?? []) {
-      collaboratorIds.add(row.user_id);
-    }
+    if (!album || album.visibility === 'private') notFound();
 
-    isOwner = album.owner_id === user.id;
-    canEdit = isOwner || collaboratorIds.has(user.id);
+    const baseUrl = resolveAppUrl().replace(/\/$/, '');
 
-    if (canEdit) {
-      const profileIds = new Set<string>([album.owner_id, ...collaboratorIds]);
-      let profileMap = new Map<string, ProfileRow>();
+    const collaboratorIds = new Set<string>();
+    let collaborators: AlbumCollaborator[] = [];
+    let isOwner = false;
+    let canEdit = false;
 
-      if (profileIds.size > 0) {
-        const { data: profileRows, error: profileError } = await supabase
-          .from('profiles')
-          .select('id, name')
-          .in('id', Array.from(profileIds));
+    if (user) {
+      const { data: collaboratorRows, error: collaboratorError } = await supabase
+        .from('album_collaborators' as const)
+        .select('user_id')
+        .eq('album_id', album.id);
 
-        if (profileError) {
-          throw profileError;
+      if (collaboratorError) {
+        if (shouldUseMockFromSupabaseError(collaboratorError)) {
+          throw new SupabaseSchemaMissingError(collaboratorError.message);
+        }
+        throw collaboratorError;
+      }
+
+      for (const row of (collaboratorRows as CollaboratorRow[] | null) ?? []) {
+        collaboratorIds.add(row.user_id);
+      }
+
+      isOwner = album.owner_id === user.id;
+      canEdit = isOwner || collaboratorIds.has(user.id);
+
+      if (canEdit) {
+        const profileIds = new Set<string>([album.owner_id, ...collaboratorIds]);
+        let profileMap = new Map<string, ProfileRow>();
+
+        if (profileIds.size > 0) {
+          const { data: profileRows, error: profileError } = await supabase
+            .from('profiles')
+            .select('id, name')
+            .in('id', Array.from(profileIds));
+
+          if (profileError) {
+            if (shouldUseMockFromSupabaseError(profileError)) throw new SupabaseSchemaMissingError(profileError.message);
+            throw profileError;
+          }
+
+          profileMap = new Map<string, ProfileRow>(
+            ((profileRows as ProfileRow[] | null) ?? []).map((row) => [row.id, row]),
+          );
         }
 
-        profileMap = new Map<string, ProfileRow>(
-          ((profileRows as ProfileRow[] | null) ?? []).map((row) => [row.id, row]),
+        collaborators = [
+          {
+            id: album.owner_id,
+            name: profileMap.get(album.owner_id)?.name ?? resolveUserLabel(user) ?? album.owner_id,
+            role: 'owner',
+            email: user.email ?? undefined,
+          },
+        ];
+
+        for (const collaboratorId of collaboratorIds) {
+          if (collaboratorId === album.owner_id) continue;
+          const profile = profileMap.get(collaboratorId);
+          collaborators.push({
+            id: collaboratorId,
+            name: profile?.name ?? collaboratorId,
+            role: 'collaborator',
+            email: undefined,
+          });
+        }
+
+        return (
+          <Providers>
+            <AlbumDetailShell
+              albumId={album.id}
+              initialName={album.name}
+              initialVisibility={album.visibility}
+              initialSlug={album.slug}
+              canEdit
+              isOwner={isOwner}
+              userLabel={resolveUserLabel(user)}
+              collaborators={collaborators}
+              publicBaseUrl={baseUrl}
+              isMockMode={false}
+              viewerId={user.id}
+            />
+          </Providers>
         );
       }
-
-      collaborators = [
-        {
-          id: album.owner_id,
-          name: profileMap.get(album.owner_id)?.name ?? resolveUserLabel(user) ?? album.owner_id,
-          role: 'owner',
-          email: user.email ?? undefined,
-        },
-      ];
-
-      for (const collaboratorId of collaboratorIds) {
-        if (collaboratorId === album.owner_id) {
-          continue;
-        }
-
-        const profile = profileMap.get(collaboratorId);
-        collaborators.push({
-          id: collaboratorId,
-          name: profile?.name ?? collaboratorId,
-          role: 'collaborator',
-          email: undefined,
-        });
-      }
-
-      return (
-        <Providers>
-          <AlbumDetailShell
-            albumId={album.id}
-            initialName={album.name}
-            initialVisibility={album.visibility}
-            initialSlug={album.slug}
-            canEdit
-            isOwner={isOwner}
-            userLabel={resolveUserLabel(user)}
-            collaborators={collaborators}
-            publicBaseUrl={baseUrl}
-            isMockMode={false}
-            viewerId={user.id}
-          />
-        </Providers>
-      );
     }
-  }
 
-  const publicData = await loadSupabasePublicAlbum(supabase, album);
-  return <PublicAlbumView data={publicData} />;
+    const publicData = await loadSupabasePublicAlbum(supabase, album);
+    return <PublicAlbumView data={publicData} />;
+  } catch (error) {
+    if (error instanceof SupabaseSchemaMissingError || shouldUseMockFromSupabaseError(error)) {
+      return renderMockAlbum(params.slug);
+    }
+    throw error;
+  }
 }
 
 async function renderMockAlbum(slug: string) {
   const album = mockFindAlbumBySlug(slug);
-  if (!album || album.visibility === 'private') {
-    notFound();
-  }
+  if (!album || album.visibility === 'private') notFound();
 
   const baseUrl = resolveAppUrl().replace(/\/$/, '');
 
   const collaborators: AlbumCollaborator[] = [
-    {
-      id: album.ownerId,
-      name: 'Demo Owner',
-      role: 'owner',
-      email: 'demo@example.com',
-    },
+    { id: album.ownerId, name: 'Demo Owner', role: 'owner', email: 'demo@example.com' },
   ];
 
   return (
@@ -310,7 +310,9 @@ function PublicAlbumView({ data }: { data: PublicAlbumData }) {
           <div className="flex flex-col gap-3 rounded-2xl bg-emerald-500/10 p-4 text-emerald-900 dark:text-emerald-100 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-wide">Sticker pack tersedia</p>
-              <p className="text-sm text-emerald-900/80 dark:text-emerald-50/80">Bagikan pack ini ke WhatsApp atau unduh file ZIP-nya.</p>
+              <p className="text-sm text-emerald-900/80 dark:text-emerald-50/80">
+                Bagikan pack ini ke WhatsApp atau unduh file ZIP-nya.
+              </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <a
@@ -396,28 +398,14 @@ function PublicAlbumView({ data }: { data: PublicAlbumData }) {
 
 function VisibilityBadge({ visibility }: { visibility: AlbumVisibility }) {
   const config: Record<AlbumVisibility, { label: string; className: string }> = {
-    public: {
-      label: 'Public',
-      className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-    },
-    unlisted: {
-      label: 'Unlisted',
-      className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-    },
-    private: {
-      label: 'Private',
-      className: 'bg-slate-500/10 text-slate-600 dark:text-slate-400',
-    },
+    public: { label: 'Public', className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
+    unlisted:{ label: 'Unlisted', className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' },
+    private: { label: 'Private', className: 'bg-slate-500/10 text-slate-600 dark:text-slate-400' },
   };
 
   const badge = config[visibility];
   return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-full border border-transparent px-3 py-1 text-sm font-medium',
-        badge.className,
-      )}
-    >
+    <span className={cn('inline-flex items-center rounded-full border border-transparent px-3 py-1 text-sm font-medium', badge.className)}>
       {badge.label}
     </span>
   );
@@ -435,6 +423,7 @@ async function loadSupabasePublicAlbum(
     .order('created_at', { ascending: true });
 
   if (stickerError) {
+    if (shouldUseMockFromSupabaseError(stickerError)) throw new SupabaseSchemaMissingError(stickerError.message);
     throw stickerError;
   }
 
@@ -446,6 +435,7 @@ async function loadSupabasePublicAlbum(
     .order('created_at', { ascending: false, nullsFirst: false });
 
   if (packError && packError.code !== 'PGRST116') {
+    if (shouldUseMockFromSupabaseError(packError)) throw new SupabaseSchemaMissingError(packError.message);
     throw packError;
   }
 
@@ -457,6 +447,7 @@ async function loadSupabasePublicAlbum(
     .limit(MAX_MESSAGES);
 
   if (messageError && messageError.code !== 'PGRST116') {
+    if (shouldUseMockFromSupabaseError(messageError)) throw new SupabaseSchemaMissingError(messageError.message);
     throw messageError;
   }
 
@@ -468,7 +459,6 @@ async function loadSupabasePublicAlbum(
   }));
 
   const latestPack = selectLatestPack((packRows as PackRow[] | null) ?? []);
-
   const messages = ((messageRows as MessageRow[] | null) ?? []).map((row) => ({
     id: row.id,
     displayName: row.display_name,
@@ -486,10 +476,7 @@ async function loadSupabasePublicAlbum(
 }
 
 function selectLatestPack(rows: PackRow[]): PublicAlbumData['latestPack'] {
-  if (!rows || rows.length === 0) {
-    return null;
-  }
-
+  if (!rows || rows.length === 0) return null;
   const sorted = [...rows].sort((a, b) => {
     const aTime = new Date(a.updated_at ?? a.created_at ?? 0).getTime();
     const bTime = new Date(b.updated_at ?? b.created_at ?? 0).getTime();
@@ -497,52 +484,31 @@ function selectLatestPack(rows: PackRow[]): PublicAlbumData['latestPack'] {
   });
 
   const pack = sorted[0];
-  const exportedZipUrl = pack.exported_zip_url;
-  const publicUrl = pack.public_url;
-  const waShareUrl = pack.wa_share_url;
-
   return {
     id: pack.id,
-    exportedZipUrl: exportedZipUrl ?? null,
-    publicUrl: publicUrl ?? null,
-    waShareUrl: waShareUrl ?? null,
+    exportedZipUrl: pack.exported_zip_url ?? null,
+    publicUrl: pack.public_url ?? null,
+    waShareUrl: pack.wa_share_url ?? null,
   };
 }
 
 function formatDate(input: string): string {
   const date = new Date(input);
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-
+  if (Number.isNaN(date.getTime())) return '';
   return new Intl.DateTimeFormat('id-ID', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   }).format(date);
 }
 
 function resolveUserLabel(user: User): string | null {
   const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
   const fullName = typeof metadata.full_name === 'string' ? metadata.full_name : undefined;
-  if (fullName && fullName.trim().length > 0) {
-    return fullName.trim();
-  }
+  if (fullName && fullName.trim().length > 0) return fullName.trim();
 
   const displayName = typeof metadata.display_name === 'string' ? metadata.display_name : undefined;
-  if (displayName && displayName.trim().length > 0) {
-    return displayName.trim();
-  }
+  if (displayName && displayName.trim().length > 0) return displayName.trim();
 
-  if (user.email && user.email.length > 0) {
-    return user.email;
-  }
-
-  if (user.phone && user.phone.length > 0) {
-    return user.phone;
-  }
-
+  if (user.email && user.email.length > 0) return user.email;
+  if (user.phone && user.phone.length > 0) return user.phone;
   return null;
 }
